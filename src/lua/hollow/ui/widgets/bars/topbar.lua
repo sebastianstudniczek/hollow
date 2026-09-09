@@ -1,5 +1,4 @@
 local attention = require("hollow.ui.widgets.attention")
-local color = require("hollow.color")
 local shared = require("hollow.ui.shared")
 local hollow = _G.hollow
 local state = require("hollow.state").get()
@@ -7,8 +6,8 @@ local ui = hollow.ui
 local tbl = hollow.tbl
 local util = hollow.util
 local M = {}
-local BAR_CACHE_NO_EXPIRY = false
-local DEFAULT_TOPBAR_HEIGHT = 22
+local DEFAULT_NEW_TAB_TEXT = "+"
+local DEFAULT_SHIFTED_NEW_TAB_TEXT = ""
 local DEFAULT_TOPBAR_LAYOUT = {
   padding = { left = 1, right = 1, top = 1, bottom = 1 },
 }
@@ -107,6 +106,49 @@ local function configured_topbar_bar_opts(value)
   return type(value) == "table" and value or {}
 end
 
+local function configured_topbar_new_tab(value)
+  if value == false then
+    return nil
+  end
+
+  local options = type(value) == "table" and value or {}
+  local theme = shared.resolve_theme().ui
+  local id = options.id or "new-tab-button"
+  local style = M.merge_tables({
+    bg = theme.tab_bar.inactive_tab.bg,
+    fg = theme.tab_bar.inactive_tab.fg,
+    radius = 4,
+    padding = { left = 5, right = 5, top = 1, bottom = 2 },
+    margin = { left = 1 },
+    hover = {
+      bg = theme.tab_bar.hover_tab.bg,
+      fg = theme.tab_bar.hover_tab.fg,
+    },
+  }, options.style)
+  style.id = id
+
+  return ui.bar.custom({
+    id = id,
+    style = style,
+    render = function()
+      local shifted = state.ui.topbar_hovered_id == id and state.ui.topbar_hovered_shifted
+      if shifted then
+        return ui.span(options.shifted_text or DEFAULT_SHIFTED_NEW_TAB_TEXT, {
+          padding = { left = 2, right = 7 },
+        })
+      end
+      return options.text or DEFAULT_NEW_TAB_TEXT
+    end,
+    on_click = function(event)
+      if event and event.shifted then
+        hollow.action.new_tab_in_domain({ insert_at_end = true })
+      else
+        hollow.action.new_tab({ insert_at_end = true })
+      end
+    end,
+  })
+end
+
 local function configured_topbar_time(value)
   if value == false then
     return false
@@ -137,13 +179,16 @@ function M.widget()
     render = function(ctx)
       local workspace = configured_topbar_bar_opts(opts.workspace)
       local tabs = configured_topbar_bar_opts(opts.tabs)
+      local new_tab = configured_topbar_new_tab(opts.new_tab)
       local separator = configured_topbar_separator(opts.separator)
       local cwd = configured_topbar_cwd(ctx, opts.cwd)
       local key_legend = configured_topbar_bar_opts(opts.key_legend)
       local items = tbl({
           workspace ~= false and ui.bar.workspace(workspace),
           separator ~= nil and workspace ~= false and tabs ~= false and separator,
+          tabs ~= false and tabs.fit ~= "content" and new_tab or false,
           tabs ~= false and ui.bar.tabs(tabs),
+          (tabs == false or tabs.fit == "content") and new_tab or false,
         })
         :filter(function(item)
           return item ~= false
