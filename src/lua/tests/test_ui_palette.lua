@@ -111,5 +111,30 @@ describe("UI palette test suite", function()
       )
       hollow.ui.overlay.clear()
     end)
+
+    it("highlights matched palette text", function()
+      hollow.ui.command_palette.open({
+        entries = {
+          {
+            name = "product_details",
+            display_name = "product-details",
+            mode_label = "",
+            desc = "",
+            category = "general",
+            category_label = "General",
+            chords = {},
+            searchable = "product-details",
+          },
+        },
+        query = "pro",
+      })
+      local overlay = hollow.ui._overlay_state()
+      local has_highlight = false
+      for _, segment in ipairs(overlay[1].rows[6].segments or {}) do
+        has_highlight = has_highlight or (segment.text == "pro" and segment.bold == true)
+      end
+      harness.assert_true(has_highlight, "command palette should highlight matched text")
+      hollow.ui.overlay.clear()
+    end)
   end)
 end)

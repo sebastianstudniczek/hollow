@@ -5,11 +5,48 @@ describe("UI select test suite", function()
   local env
   local hollow
   local on_key
+  local shared
 
   setup(function()
     env = harness.boot()
     hollow = env.hollow
     on_key = env.get_key_handler()
+    shared = require("hollow.ui.shared")
+  end)
+
+  describe("select ranking", function()
+    it("prioritizes full-label prefixes in fuzzy scores", function()
+      harness.assert_true(
+        shared.fuzzy_match_score("product-details", "pro")
+          > shared.fuzzy_match_score("gamer-profile-app", "pro"),
+        "fuzzy matching should prioritize labels starting with the query"
+      )
+    end)
+
+    it("sorts plain matches by query position", function()
+      hollow.ui.select.open({
+        items = { "gamer-profile-app", "ost-propagate", "product-details" },
+        fuzzy = false,
+      })
+      harness.assert_true(on_key("p", 0), "select should consume plain filter input")
+      harness.assert_true(on_key("r", 0), "select should consume second plain filter input")
+      harness.assert_true(on_key("o", 0), "select should consume third plain filter input")
+
+      local overlay = hollow.ui._overlay_state()
+      harness.assert_true(overlay ~= nil, "plain select should remain open while filtering")
+      local first_entry_text = ""
+      local has_highlight = false
+      for _, segment in ipairs(overlay[1].rows[5].segments or {}) do
+        first_entry_text = first_entry_text .. (segment.text or "")
+        has_highlight = has_highlight or (segment.text == "pro" and segment.bold == true)
+      end
+      harness.assert_true(
+        first_entry_text:find("product-details", 1, true) ~= nil,
+        "plain matching should put full-label prefixes first"
+      )
+      harness.assert_true(has_highlight, "select should highlight matched label text")
+      hollow.ui.overlay.clear()
+    end)
   end)
 
   describe("select with search_text", function()

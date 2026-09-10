@@ -266,8 +266,9 @@ end
 ---@param is_hovered boolean
 ---@param theme HollowUiTheme
 ---@param row_options table
+---@param query string
 ---@return HollowUiRowNode
-local function render_entry_row(entry, is_selected, is_hovered, theme, row_options)
+local function render_entry_row(entry, is_selected, is_hovered, theme, row_options, query)
   local chord_text = #entry.chords > 0 and ("  " .. table.concat(entry.chords, " ")) or ""
   local label_text = (entry.mode_label ~= "" and (entry.mode_label .. " ") or "")
     .. (entry.desc ~= "" and entry.desc or entry.display_name)
@@ -277,8 +278,14 @@ local function render_entry_row(entry, is_selected, is_hovered, theme, row_optio
   local label_nodes = hollow
     .tbl({
       ui.span(marker(is_selected, is_hovered, "  "), { fg = fg, bold = emphasize }),
-      ui.span(label_text, { fg = fg }),
     })
+    :concat(
+      shared.highlight_inline_nodes(
+        { ui.span(label_text, { fg = fg }) },
+        query,
+        { fg = theme.panel_border, bold = true }
+      )
+    )
     :concat(chord_text ~= "" and {
       ui.spacer(),
       ui.span(chord_text, { fg = theme.panel_border or theme.muted }),
@@ -352,7 +359,14 @@ function ui.command_palette.open(opts)
                 row_options
               )
             elseif entry._type == "item" then
-              return render_entry_row(entry.item, is_selected, is_hovered, theme, row_options)
+              return render_entry_row(
+                entry.item,
+                is_selected,
+                is_hovered,
+                theme,
+                row_options,
+                filter.value
+              )
             end
           end)
           :get()

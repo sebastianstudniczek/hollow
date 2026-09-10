@@ -403,6 +403,77 @@ function M.nodes_plain_text(nodes)
   return table.concat(parts)
 end
 
+---@param nodes HollowUiRenderableNode[]|nil
+---@param query any
+---@param match_style HollowUiNodeStyle
+---@return HollowUiRenderableNode[]
+function M.highlight_inline_nodes(nodes, query, match_style)
+  query = tostring(query or ""):lower()
+  if query == "" then
+    return nodes or {}
+  end
+
+  local normalized = M.normalize_inline_nodes(nodes or {})
+  local text = M.nodes_plain_text(normalized)
+  local lower_text = text:lower()
+  local matched_positions = {}
+  local start_idx, end_idx = lower_text:find(query, 1, true)
+
+  if start_idx ~= nil then
+    for index = start_idx, end_idx do
+      matched_positions[index] = true
+    end
+  else
+    local offset = 1
+    for index = 1, #query do
+      local found = lower_text:find(query:sub(index, index), offset, true)
+      if found == nil then
+        return normalized
+      end
+      matched_positions[found] = true
+      offset = found + 1
+    end
+  end
+
+  local highlighted = {}
+  local text_offset = 0
+  for _, node in ipairs(normalized) do
+    local node_text = node.text or ""
+    local chunk_start = 1
+    local chunk_highlighted = matched_positions[text_offset + 1] == true
+
+    local function append_chunk(end_index)
+      if end_index < chunk_start then
+        return
+      end
+
+      local chunk_style = node.style
+      if chunk_highlighted then
+        chunk_style =
+          M.merge_style_tables(type(node.style) == "table" and node.style or {}, match_style)
+      end
+      highlighted[#highlighted + 1] = {
+        _type = "span",
+        text = node_text:sub(chunk_start, end_index),
+        style = chunk_style,
+      }
+    end
+
+    for index = 1, #node_text do
+      local is_highlighted = matched_positions[text_offset + index] == true
+      if is_highlighted ~= chunk_highlighted then
+        append_chunk(index - 1)
+        chunk_start = index
+        chunk_highlighted = is_highlighted
+      end
+    end
+    append_chunk(#node_text)
+    text_offset = text_offset + #node_text
+  end
+
+  return highlighted
+end
+
 -- ---------------------------------------------------------------------------
 -- Segment serialization
 -- ---------------------------------------------------------------------------
@@ -660,6 +731,10 @@ function M.fuzzy_match_score(text, query)
         best = word_subsequence_score
       end
     end
+  end
+
+  if text:lower():sub(1, #query) == query:lower() then
+    best = math.max(best or 0, substring_score(text, query) + 1000)
   end
 
   return best
