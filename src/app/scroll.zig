@@ -65,6 +65,8 @@ pub fn scrollPaneViewport(self: *App, pane: *Pane, delta: isize) void {
     const runtime = if (self.ghostty) |*rt| rt else return;
     runtime.terminalScroll(pane.terminal, delta);
     pane.render_dirty = .full;
+    pane.viewport_scroll_pending = true;
+    pane.render_state_fresh = false;
     pane.last_render_state_update_ns = 0;
     pane.pty_received_data = true;
     self.scroll_accum = 0;
@@ -90,6 +92,7 @@ fn forceScrollPaneViewportToRow(self: *App, pane: *Pane, top_row: u64) void {
     }
 
     pane.render_dirty = .full;
+    pane.viewport_scroll_pending = true;
     pane.render_state_fresh = false;
     pane.last_render_state_update_ns = 0;
     pane.pty_received_data = true;
@@ -111,6 +114,7 @@ fn restorePaneViewportFromBottom(self: *App, pane: *Pane, top_row: usize) void {
     }
 
     pane.render_dirty = .full;
+    pane.viewport_scroll_pending = true;
     pane.render_state_fresh = false;
     pane.last_render_state_update_ns = 0;
     pane.pty_received_data = true;
@@ -128,6 +132,7 @@ pub fn scrollPaneViewportToRow(self: *App, pane: *Pane, top_row: u64) void {
 
     runtime.terminalScrollToRow(pane.terminal, @intCast(clamped_target));
     pane.render_dirty = .full;
+    pane.viewport_scroll_pending = true;
     pane.render_state_fresh = false;
     pane.last_render_state_update_ns = 0;
     pane.pty_received_data = true;

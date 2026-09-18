@@ -699,6 +699,94 @@ def run_chunked(frames, rate_hz=100, updates_per_frame=4, write_chunk_bytes=128,
         f"write_delay_ms={write_delay_ms:.1f}\n"
     )
 
+def codex_flash_row(row, frame, star, width):
+    if row == 1:
+        text = f"  Thinking {star}  pass={frame:05d}"
+        red, green, blue = (44, 42, 58) if frame % 2 == 0 else (30, 34, 40)
+    else:
+        text = f"  {star} task update"
+        red, green, blue = (33, 62, 43) if frame % 2 == 0 else (52, 38, 34)
+    body = text[:width].ljust(width)
+    return (
+        f"{CSI}{row + 1};1H{CSI}2K"
+        f"{CSI}48;2;{red};{green};{blue}m{CSI}38;2;235;240;245m"
+        f"{body}{RESET}"
+    )
+
+def run_codex_flash(frames, rate_hz=100, updates_per_frame=1, write_chunk_bytes=128, write_delay_ms=0.0):
+    """Model Codex live status: stable diff UI plus timer-driven star rows."""
+    interval = 1.0 / max(1, rate_hz)
+    updates_per_frame = max(1, updates_per_frame)
+    write_chunk_bytes = max(1, write_chunk_bytes)
+    write_delay_s = max(0.0, write_delay_ms / 1000.0)
+    content_rows = max(1, rows - 1)
+
+    sys.stdout.write(HIDE + ALT_ON + CLEAR + HOME + SYNC_ON)
+    for row in range(content_rows):
+        if row == 0:
+            text = "  Codex  reviewing changes"
+        elif row == 1:
+            text = "  renderer reconciliation"
+        else:
+            text = f"  file_{row}.lua  unchanged"
+        red, green, blue = (28, 54, 38) if row % 4 == 0 else (24, 32, 34)
+        body = text[:cols].ljust(cols)
+        sys.stdout.write(
+            f"{CSI}{row + 1};1H{CSI}2K"
+            f"{CSI}48;2;{red};{green};{blue}m{CSI}38;2;220;225;235m"
+            f"{body}{RESET}"
+        )
+    sys.stdout.write(SYNC_OFF)
+    sys.stdout.flush()
+
+    start = time.perf_counter()
+    frame_times = []
+    written = 0
+    done = 0
+    for frame in range(frames):
+        if not running:
+            break
+        tick_start = time.perf_counter()
+        star = ("*", "+", ".", "+")[frame % 4]
+        sys.stdout.write(SYNC_ON)
+        for update in range(updates_per_frame):
+            logical_frame = frame * updates_per_frame + update
+            row = 1 + (logical_frame % max(1, content_rows - 1))
+            payload = codex_flash_row(row, logical_frame, star, cols).encode()
+            for offset in range(0, len(payload), write_chunk_bytes):
+                chunk = payload[offset:offset + write_chunk_bytes]
+                os.write(sys.stdout.fileno(), chunk)
+                written += len(chunk)
+                if write_delay_s > 0:
+                    time.sleep(write_delay_s)
+            if update + 1 < updates_per_frame:
+                time.sleep(interval / updates_per_frame)
+        sys.stdout.write(SYNC_OFF)
+        sys.stdout.flush()
+        frame_times.append(time.perf_counter() - tick_start)
+        done += 1
+        sleep_for = interval - frame_times[-1]
+        if sleep_for > 0.0001:
+            time.sleep(sleep_for)
+
+    elapsed = time.perf_counter() - start
+    cleanup()
+    if frame_times:
+        avg_ms = sum(frame_times) / len(frame_times) * 1000
+        min_ms = min(frame_times) * 1000
+        max_ms = max(frame_times) * 1000
+        p99_ms = sorted(frame_times)[int(len(frame_times) * 0.99)] * 1000
+    else:
+        avg_ms = min_ms = max_ms = p99_ms = 0.0
+    sys.stdout.write(stat_line("codex-flash", elapsed, "frames", max(1, done)))
+    sys.stdout.write(
+        f"bytes: {written} ({written / max(elapsed, 1e-9):.0f}/s)\n"
+        f"frame duration (ms):  avg={avg_ms:.2f}  min={min_ms:.2f} "
+        f"max={max_ms:.2f}  p99={p99_ms:.2f}\n"
+        f"mode: CSI ?2026h/l  updates_per_frame={updates_per_frame} "
+        f"write_chunk_bytes={write_chunk_bytes} write_delay_ms={write_delay_ms:.1f}\n"
+    )
+
 def run_keypress(presses, rate_hz=100):
     """
     Simulate rapid j/k scrolling in nvim:
@@ -791,7 +879,9 @@ elif mode == "chunked":
     run_chunked(count, rate_hz=rate_arg, updates_per_frame=sync_updates_arg, write_chunk_bytes=chunk_bytes, write_delay_ms=write_delay_ms)
 elif mode == "chunked-raw":
     run_chunked(count, rate_hz=rate_arg, updates_per_frame=sync_updates_arg, write_chunk_bytes=chunk_bytes, synchronized=False, write_delay_ms=write_delay_ms)
+elif mode == "codex-flash":
+    run_codex_flash(count, rate_hz=rate_arg, updates_per_frame=sync_updates_arg, write_chunk_bytes=chunk_bytes, write_delay_ms=write_delay_ms)
 else:
-    sys.stderr.write("usage: ./bench.sh [scroll|repaint|keypress|split-scroll|sync-output|chunked|chunked-raw|bypass-blocking|nvim-restart|minimize-restore] ...\n")
+    sys.stderr.write("usage: ./bench.sh [scroll|repaint|keypress|split-scroll|sync-output|chunked|chunked-raw|codex-flash|bypass-blocking|nvim-restart|minimize-restore] ...\n")
     sys.exit(2)
 PY

@@ -210,6 +210,8 @@ pub inline fn emitGlyphQuad(
 
     const base = self.glyph_verts_count;
     const verts = self.glyph_verts_cpu;
+    const origin_x = self.glyph_origin_x;
+    const origin_y = self.glyph_origin_y;
     // For color emoji: vertex alpha = 0 signals the shader to output atlas RGBA
     // directly (fg colour is ignored — set to white as a safe fallback).
     // For grayscale: vertex alpha = 255, fg tints the glyph.
@@ -220,10 +222,10 @@ pub inline fn emitGlyphQuad(
     // Common case: the glyph quad is already fully contained within the row's
     // clip bounds, so avoid the extra clipping/interpolation math.
     if (gy >= clip_y0 and gy + h <= clip_y1) {
-        verts[base + 0] = .{ .x = gx, .y = gy, .u = s0, .v = t0, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
-        verts[base + 1] = .{ .x = gx + w, .y = gy, .u = s1, .v = t0, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
-        verts[base + 2] = .{ .x = gx + w, .y = gy + h, .u = s1, .v = t1, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
-        verts[base + 3] = .{ .x = gx, .y = gy + h, .u = s0, .v = t1, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 0] = .{ .x = origin_x + gx, .y = origin_y + gy, .u = s0, .v = t0, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 1] = .{ .x = origin_x + gx + w, .y = origin_y + gy, .u = s1, .v = t0, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 2] = .{ .x = origin_x + gx + w, .y = origin_y + gy + h, .u = s1, .v = t1, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 3] = .{ .x = origin_x + gx, .y = origin_y + gy + h, .u = s0, .v = t1, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
         emitted = 4;
     } else {
         // Clip the quad vertically to [clip_y0, clip_y1] and adjust UVs.
@@ -236,10 +238,10 @@ pub inline fn emitGlyphQuad(
         const tc_top = t0 + (clipped_top - gy) * inv_h * (t1 - t0);
         const tc_bot = t0 + (clipped_bot - gy) * inv_h * (t1 - t0);
 
-        verts[base + 0] = .{ .x = gx, .y = clipped_top, .u = s0, .v = tc_top, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
-        verts[base + 1] = .{ .x = gx + w, .y = clipped_top, .u = s1, .v = tc_top, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
-        verts[base + 2] = .{ .x = gx + w, .y = clipped_bot, .u = s1, .v = tc_bot, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
-        verts[base + 3] = .{ .x = gx, .y = clipped_bot, .u = s0, .v = tc_bot, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 0] = .{ .x = origin_x + gx, .y = origin_y + clipped_top, .u = s0, .v = tc_top, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 1] = .{ .x = origin_x + gx + w, .y = origin_y + clipped_top, .u = s1, .v = tc_top, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 2] = .{ .x = origin_x + gx + w, .y = origin_y + clipped_bot, .u = s1, .v = tc_bot, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
+        verts[base + 3] = .{ .x = origin_x + gx, .y = origin_y + clipped_bot, .u = s0, .v = tc_bot, .r = vfg.r, .g = vfg.g, .b = vfg.b, .a = vfg.a };
         emitted = 4;
     }
 

@@ -15,6 +15,7 @@ const default_iterations: usize = 10;
 const Scenario = enum {
     repaint,
     chunked,
+    flash,
     scroll,
     styled,
     replay,
@@ -484,6 +485,71 @@ fn buildCorpus(allocator: std.mem.Allocator, options: Options) ![]u8 {
                 try corpus.appendSlice(allocator, "\x1b[0m\x1b[?2026l");
             }
         },
+        .flash => {
+            // Model a Codex-like live dashboard: a stable truecolor diff view
+            // followed by timer-driven star updates on a few rows. Each tick
+            // clears and repaints rows so cached backgrounds and glyphs are
+            // exercised together rather than only parsing spinner bytes.
+            try corpus.appendSlice(allocator, "\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2026h");
+            var row: usize = 0;
+            while (row < options.rows) : (row += 1) {
+                const red: u8 = if (row % 4 == 0) 28 else 24;
+                const green: u8 = if (row % 4 == 0) 54 else 32;
+                const blue: u8 = if (row % 4 == 0) 38 else 34;
+                try appendFormat(&corpus, allocator, "\x1b[{d};1H\x1b[2K\x1b[48;2;{d};{d};{d}m\x1b[38;2;220;225;235m", .{
+                    row + 1, red, green, blue,
+                });
+                if (row == 0) {
+                    try corpus.appendSlice(allocator, "  Codex  reviewing changes");
+                } else if (row == 1) {
+                    try corpus.appendSlice(allocator, "  renderer reconciliation");
+                } else {
+                    try appendFormat(&corpus, allocator, "  file_{d}.lua  unchanged", .{row});
+                }
+                const used: usize = if (row == 0) 25 else if (row == 1) 29 else 25;
+                if (used < options.cols) try appendRepeated(&corpus, allocator, " ", options.cols - used);
+                try corpus.appendSlice(allocator, "\x1b[0m");
+            }
+            try corpus.appendSlice(allocator, "\x1b[?2026l");
+
+            var frame: usize = 0;
+            while (frame < options.frames) : (frame += 1) {
+                const star = switch (frame % 4) {
+                    0 => "*",
+                    1 => "+",
+                    2 => ".",
+                    else => "+",
+                };
+                const status_row = if (options.rows > 3) 3 + (frame % (options.rows - 2)) else 1;
+                const status_r: u8 = if (frame % 2 == 0) 44 else 30;
+                const status_g: u8 = if (frame % 2 == 0) 42 else 34;
+                const status_b: u8 = if (frame % 2 == 0) 58 else 40;
+                const row_r: u8 = if (frame % 2 == 0) 33 else 52;
+                const row_g: u8 = if (frame % 2 == 0) 62 else 38;
+                const row_b: u8 = if (frame % 2 == 0) 43 else 34;
+                try corpus.appendSlice(allocator, "\x1b[?2026h");
+                try appendFormat(&corpus, allocator, "\x1b[2;1H\x1b[2K\x1b[48;2;{d};{d};{d}m\x1b[38;2;240;240;245m  Thinking {s}  pass={d}", .{
+                    status_r,
+                    status_g,
+                    status_b,
+                    star,
+                    frame,
+                });
+                const status_used: usize = 22;
+                if (status_used < options.cols) try appendRepeated(&corpus, allocator, " ", options.cols - status_used);
+                try appendFormat(&corpus, allocator, "\x1b[0m\x1b[{d};1H\x1b[2K\x1b[48;2;{d};{d};{d}m\x1b[38;2;235;240;245m  {s} task update", .{
+                    status_row,
+                    row_r,
+                    row_g,
+                    row_b,
+                    star,
+                });
+                const row_used: usize = 18;
+                if (row_used < options.cols) try appendRepeated(&corpus, allocator, " ", options.cols - row_used);
+                try corpus.appendSlice(allocator, "\x1b[0m\x1b[?2026l");
+            }
+            try corpus.appendSlice(allocator, "\x1b[?25h\x1b[?1049l");
+        },
         .scroll => {
             const lines = try std.math.mul(usize, options.frames, options.rows);
             var line: usize = 0;
@@ -685,6 +751,7 @@ fn printJsonStats(writer: anytype, name: []const u8, samples: []i128) !void {
 fn parseScenario(value: []const u8) !Scenario {
     if (std.mem.eql(u8, value, "repaint")) return .repaint;
     if (std.mem.eql(u8, value, "chunked")) return .chunked;
+    if (std.mem.eql(u8, value, "flash")) return .flash;
     if (std.mem.eql(u8, value, "scroll")) return .scroll;
     if (std.mem.eql(u8, value, "styled")) return .styled;
     if (std.mem.eql(u8, value, "replay")) return .replay;
@@ -821,6 +888,62 @@ pub fn runCorrectnessTest(allocator: std.mem.Allocator) !void {
     harness.queue(&session, true);
     if (harness.last_cells_visited == 0 or harness.last_glyph_verts == 0) return error.EmptyRender;
     harness.submit(true);
+}
+
+pub fn runFlashScenarioTest(allocator: std.mem.Allocator) !void {
+    const options = Options{ .scenario = .flash, .frames = 8, .rows = 8, .cols = 80, .chunk_bytes = 64, .warmup = 0, .iterations = 1 };
+    const corpus = try buildCorpus(allocator, options);
+    defer allocator.free(corpus);
+    var harness = try Harness.init(allocator, options);
+    defer harness.deinit();
+    var session = try Session.init(&harness.runtime, options.cols, options.rows);
+    defer session.deinit();
+    session.activate();
+
+    var updates: usize = 0;
+    var saw_backgrounds = false;
+    var saw_glyphs = false;
+    var offset: usize = 0;
+    while (offset < corpus.len) {
+        const end = @min(offset + options.chunk_bytes, corpus.len);
+        harness.runtime.terminalWrite(session.terminal, corpus[offset..end]);
+        try harness.runtime.updateRenderState(session.render_state, session.terminal);
+        harness.captureState(&session);
+        const force_full = updates == 0 or harness.dirty_level == .full;
+        harness.queue(&session, force_full);
+        saw_backgrounds = saw_backgrounds or harness.last_bg_rects > 0;
+        saw_glyphs = saw_glyphs or harness.last_glyph_verts > 0;
+        if (force_full) harness.clearDirtyRows(&session);
+        harness.submit(force_full);
+        updates += 1;
+        offset = end;
+    }
+
+    if (updates < 2) return error.FlashScenarioDidNotProduceUpdates;
+    if (!saw_backgrounds or !saw_glyphs) return error.EmptyFlashRender;
+}
+
+pub fn runPaneGlyphOffsetTest(allocator: std.mem.Allocator) !void {
+    const options = Options{ .rows = 2, .cols = 8, .warmup = 0, .iterations = 1 };
+    var harness = try Harness.init(allocator, options);
+    defer harness.deinit();
+    var session = try Session.init(&harness.runtime, options.cols, options.rows);
+    defer session.deinit();
+    session.activate();
+    try harness.prepare(&session, "A");
+
+    var queue_options = harness.queueOptions(&session, true);
+    queue_options.offset_x = 137;
+    queue_options.offset_y = 53;
+    harness.renderer.beginFrame();
+    harness.renderer.queueTerminal(&harness.runtime, queue_options);
+
+    if (harness.renderer.glyph_verts_count < 4) return error.NoOffsetGlyphVertices;
+    for (harness.renderer.glyph_verts_cpu[0..harness.renderer.glyph_verts_count]) |vertex| {
+        if (vertex.x < queue_options.offset_x or vertex.y < queue_options.offset_y) {
+            return error.GlyphMissingPaneOffset;
+        }
+    }
 }
 
 pub fn runUnicodeGraphemeTest(allocator: std.mem.Allocator) !void {

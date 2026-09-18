@@ -3242,9 +3242,26 @@ fn frameCb(user_data: ?*anyopaque) callconv(.c) void {
         leaves.len <= MAX_CACHED_VISIBLE_PANES and
         !app.config.renderer_safe_mode and
         !app.config.renderer_disable_multi_pane_cache;
+    const single_visible_pane = if (leaves.len == 0) app.activePane() else null;
+    const viewport_scroll_active = if (leaves.len > 0)
+        for (leaves) |leaf| {
+            if (leaf.pane.viewport_scroll_pending) break true;
+        } else false
+    else if (single_visible_pane) |pane|
+        pane.viewport_scroll_pending
+    else
+        false;
+    if (viewport_scroll_active) {
+        if (leaves.len > 0) {
+            for (leaves) |leaf| {
+                if (leaf.pane.viewport_scroll_pending) invalidatePaneCacheForPane(leaf.pane);
+            }
+        } else if (single_visible_pane) |pane| {
+            invalidatePaneCacheForPane(pane);
+        }
+    }
     const use_direct_render = app.config.renderer_single_pane_direct and leaves.len == 0 and !atlas_reset_this_frame;
     const use_safe_render = app.config.renderer_safe_mode and !sync_cache_supported;
-    const single_visible_pane = if (leaves.len == 0) app.activePane() else null;
     const auto_disable_multi_pane_cache = leaves.len > MAX_CACHED_VISIBLE_PANES;
     const use_direct_multi_pane = (app.config.renderer_disable_multi_pane_cache or auto_disable_multi_pane_cache) and leaves.len > 1 and !sync_cache_supported;
     const sync_cache_unready = if (!visible_sync_output or use_safe_render or use_direct_multi_pane or use_direct_render)
@@ -3619,6 +3636,7 @@ fn frameCb(user_data: ?*anyopaque) callconv(.c) void {
                     // Clear the pane-level dirty flag so subsequent clean frames
                     // are skipped.
                     pane.render_dirty = .false_value;
+                    pane.viewport_scroll_pending = false;
                     return .cached_dirty;
                 }
             }.call;
@@ -3736,6 +3754,7 @@ fn frameCb(user_data: ?*anyopaque) callconv(.c) void {
                         if (renderer.last_atlas_flushed) g_phase_accum_atlas_flushes += 1;
                         leaf.pane.render_dirty = .false_value;
                         leaf.pane.pty_wrote_this_frame = false;
+                        leaf.pane.viewport_scroll_pending = false;
                     }
                 } else if (app.activePane()) |pane| {
                     if (!paneRenderHelpersReady(pane)) {
@@ -3791,6 +3810,7 @@ fn frameCb(user_data: ?*anyopaque) callconv(.c) void {
                         if (renderer.last_atlas_flushed) g_phase_accum_atlas_flushes += 1;
                         pane.render_dirty = .false_value;
                         pane.pty_wrote_this_frame = false;
+                        pane.viewport_scroll_pending = false;
                     }
                 }
             }
@@ -3900,6 +3920,7 @@ fn frameCb(user_data: ?*anyopaque) callconv(.c) void {
                         // Mark pane clean after direct render.
                         pane.render_dirty = .false_value;
                         pane.pty_wrote_this_frame = false;
+                        pane.viewport_scroll_pending = false;
                     } else {
                         // Use cached RT
                         const pw_u: u32 = @max(1, @as(u32, @intFromFloat(width)));

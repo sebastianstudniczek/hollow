@@ -10,6 +10,14 @@ test "renderer handles oversized grapheme clusters" {
     try benchmark.runUnicodeGraphemeTest(std.testing.allocator);
 }
 
+test "renderer handles timer-driven flashing updates" {
+    try benchmark.runFlashScenarioTest(std.testing.allocator);
+}
+
+test "direct glyph vertices include pane offset" {
+    try benchmark.runPaneGlyphOffsetTest(std.testing.allocator);
+}
+
 test "text caches remain bounded under unique output" {
     try benchmark.runCachePressureTest(std.testing.allocator);
 }

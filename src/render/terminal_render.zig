@@ -173,6 +173,8 @@ pub fn queueTerminal(
     self.last_atlas_flushed = false;
     const queue = options;
 
+    self.glyph_origin_x = queue.offset_x;
+    self.glyph_origin_y = queue.offset_y;
     setupViewport(self, queue.offset_x, queue.offset_y, queue.viewport_width, queue.viewport_height);
 
     if (!self.logged_first_draw) {
@@ -331,6 +333,8 @@ pub fn queueBackgroundAndRasterRow(
     var last_style_selected = false;
     var last_style_valid = false;
     var last_style_info: CachedStyleInfo = undefined;
+    var background_run_color: ?ghostty.ColorRgb = null;
+    var background_run_start = col_px;
     while (runtime.nextCell(queue.row_cells.*)) : ({
         col_x += 1;
         col_px += self.cell_w;
@@ -372,8 +376,18 @@ pub fn queueBackgroundAndRasterRow(
             true
         else
             false;
-        if (needs_background) {
-            queueCellBackground(self, runtime, queue, row, content_tag, style_id, cached_style, is_selected, col_px, row.py, quads_open);
+        const background = if (needs_background)
+            resolveCellBackground(self, runtime, queue, row, content_tag, style_id, cached_style, is_selected, col_px)
+        else
+            null;
+        if (background) |bg| {
+            if (background_run_color == null or !colorsEqual(background_run_color.?, bg)) {
+                flushBackgroundRun(self, &background_run_color, background_run_start, col_px, row.py, quads_open);
+                background_run_color = bg;
+                background_run_start = col_px;
+            }
+        } else {
+            flushBackgroundRun(self, &background_run_color, background_run_start, col_px, row.py, quads_open);
         }
 
         switch (content_tag) {
@@ -472,6 +486,7 @@ pub fn queueBackgroundAndRasterRow(
             else => flushQueuedRun(self, .raster, run_buf, &run, row.py),
         }
     }
+    flushBackgroundRun(self, &background_run_color, background_run_start, col_px, row.py, quads_open);
     flushQueuedRun(self, .raster, run_buf, &run, row.py);
 }
 
@@ -856,7 +871,7 @@ pub fn shouldSkipRowByHash(
 
 // ── Cell-level helpers ────────────────────────────────────────────────────────
 
-pub fn queueCellBackground(
+pub fn resolveCellBackground(
     self: *FtRenderer,
     runtime: *ghostty.Runtime,
     queue: *const QueueContext,
@@ -866,32 +881,15 @@ pub fn queueCellBackground(
     cached_style: ?*const CachedStyleInfo,
     is_selected: bool,
     col_px: f32,
-    py: f32,
-    quads_open: *bool,
-) void {
+) ?ghostty.ColorRgb {
     const is_bg_tag = content_tag == .bg_color_palette or content_tag == .bg_color_rgb;
     if (is_selected) {
-        self.last_bg_rects += 1;
-        openQuadBatch(self, quads_open);
-        c.sgl_c4b(queue.colors.selection_bg.r, queue.colors.selection_bg.g, queue.colors.selection_bg.b, 255);
-        c.sgl_v2f(col_px, py);
-        c.sgl_v2f(col_px + self.cell_w, py);
-        c.sgl_v2f(col_px + self.cell_w, py + self.cell_h);
-        c.sgl_v2f(col_px, py + self.cell_h);
-        return;
+        return queue.colors.selection_bg;
     }
 
     if (row.search_highlight) |highlight| {
         if (highlight.start_col <= highlight.end_col and col_px >= self.padding_x + @as(f32, @floatFromInt(highlight.start_col)) * self.cell_w and col_px < self.padding_x + @as(f32, @floatFromInt(highlight.end_col)) * self.cell_w) {
-            const bg = if (highlight.active) queue.colors.search_active_bg else queue.colors.search_bg;
-            self.last_bg_rects += 1;
-            openQuadBatch(self, quads_open);
-            c.sgl_c4b(bg.r, bg.g, bg.b, 255);
-            c.sgl_v2f(col_px, py);
-            c.sgl_v2f(col_px + self.cell_w, py);
-            c.sgl_v2f(col_px + self.cell_w, py + self.cell_h);
-            c.sgl_v2f(col_px, py + self.cell_h);
-            return;
+            return if (highlight.active) queue.colors.search_active_bg else queue.colors.search_bg;
         }
     }
 
@@ -903,19 +901,12 @@ pub fn queueCellBackground(
                     queue.colors.cursor_bg
                 else
                     runtime.cellForeground(queue.row_cells.*) orelse queue.colors.cursor_bg;
-                self.last_bg_rects += 1;
-                openQuadBatch(self, quads_open);
-                c.sgl_c4b(cursor_bg.r, cursor_bg.g, cursor_bg.b, 255);
-                c.sgl_v2f(col_px, py);
-                c.sgl_v2f(col_px + self.cell_w, py);
-                c.sgl_v2f(col_px + self.cell_w, py + self.cell_h);
-                c.sgl_v2f(col_px, py + self.cell_h);
-                return;
+                return cursor_bg;
             }
         }
     }
 
-    if (!is_bg_tag and style_id == 0) return;
+    if (!is_bg_tag and style_id == 0) return null;
     const bg: ghostty.ColorRgb = if (!is_bg_tag and style_id != 0)
         if (cached_style) |style|
             style.bg
@@ -925,15 +916,28 @@ pub fn queueCellBackground(
             runtime.cellBackground(queue.row_cells.*) orelse queue.colors.default_bg
     else
         runtime.cellBackground(queue.row_cells.*) orelse queue.colors.default_bg;
-    if (colorsEqual(bg, queue.colors.default_bg)) return;
+    if (colorsEqual(bg, queue.colors.default_bg)) return null;
 
+    return bg;
+}
+
+pub fn flushBackgroundRun(
+    self: *FtRenderer,
+    color: *?ghostty.ColorRgb,
+    start_x: f32,
+    end_x: f32,
+    py: f32,
+    quads_open: *bool,
+) void {
+    const bg = color.* orelse return;
     self.last_bg_rects += 1;
     openQuadBatch(self, quads_open);
     c.sgl_c4b(bg.r, bg.g, bg.b, 255);
-    c.sgl_v2f(col_px, py);
-    c.sgl_v2f(col_px + self.cell_w, py);
-    c.sgl_v2f(col_px + self.cell_w, py + self.cell_h);
-    c.sgl_v2f(col_px, py + self.cell_h);
+    c.sgl_v2f(start_x, py);
+    c.sgl_v2f(end_x, py);
+    c.sgl_v2f(end_x, py + self.cell_h);
+    c.sgl_v2f(start_x, py + self.cell_h);
+    color.* = null;
 }
 
 pub inline fn resolveCellTextStyle(

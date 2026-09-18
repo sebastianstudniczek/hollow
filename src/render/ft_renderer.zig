@@ -178,6 +178,10 @@ pub const FtRenderer = struct {
     // CPU-side glyph vertex staging array.
     glyph_verts_cpu: []GlyphVertex,
     glyph_verts_count: usize,
+    // Current terminal queue origin. Direct multi-pane glyphs are staged in
+    // framebuffer coordinates; cached pane queues use an origin of zero.
+    glyph_origin_x: f32,
+    glyph_origin_y: f32,
     /// Consecutive quad runs sharing an atlas page (multi-bind draw).
     glyph_atlas_runs: [MAX_ATLAS_DRAW_RUNS]AtlasDrawRun = undefined,
     glyph_atlas_run_count: usize = 0,
@@ -631,6 +635,8 @@ pub const FtRenderer = struct {
             .glyph_ibuf = glyph_ibuf,
             .glyph_verts_cpu = glyph_verts_cpu,
             .glyph_verts_count = 0,
+            .glyph_origin_x = 0,
+            .glyph_origin_y = 0,
             .glyph_atlas_run_count = 0,
             .use_linear_correction = cfg.use_linear_correction,
         };

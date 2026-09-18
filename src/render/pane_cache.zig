@@ -61,8 +61,8 @@ pub const PaneCache = struct {
         const blit_smp = c.sg_make_sampler(&blit_smp_desc);
 
         var ctx_desc = std.mem.zeroes(c.sgl_context_desc_t);
-        // Terminal backgrounds and decorations share a few large batches.
-        // 128k vertices still covers a fully styled 300x100 grid.
+        // Background cells are coalesced into horizontal color runs before
+        // Sokol expands each submitted quad to six internal vertices.
         ctx_desc.max_vertices = 1 << 17;
         ctx_desc.max_commands = 1 << 10;
         ctx_desc.color_format = c.SG_PIXELFORMAT_RGBA8;

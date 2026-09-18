@@ -158,6 +158,9 @@ pub const Pane = struct {
     ///                   clear RT and re-render all rows
     /// Cleared (set back to .false_value) by the renderer after re-rendering.
     render_dirty: ghostty.RenderStateDirty = .false_value,
+    /// A viewport scroll changes row identity without changing terminal grid
+    /// dimensions. Invalidate the retained pane texture before rebuilding it.
+    viewport_scroll_pending: bool = false,
     read_buf: *[PTY_READ_BUFFER_SIZE]u8 = &shared_pty_read_buf,
     logged_first_pty_read: bool = false,
     pty_pending_seq: [PTY_PENDING_SEQUENCE_MAX]u8 = [_]u8{0} ** PTY_PENDING_SEQUENCE_MAX,
