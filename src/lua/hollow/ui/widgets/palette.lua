@@ -407,14 +407,14 @@ function ui.command_palette.open(opts)
     theme = theme,
     render = render_content,
     keys = ui.keys(filter, nav, {
-      escape = function()
+      ["escape|<C-[>"] = function()
         modal.close()
         util.safe_call(opts.on_cancel)
       end,
-      arrow_down = function()
+      ["arrow_down|<C-j>"] = function()
         nav.index = util.cycle_index(nav.index, 1, #current_flat())
       end,
-      arrow_up = function()
+      ["arrow_up|<C-k>"] = function()
         nav.index = util.cycle_index(nav.index, -1, #current_flat())
       end,
       enter = function()

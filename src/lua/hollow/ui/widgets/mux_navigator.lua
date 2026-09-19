@@ -383,7 +383,7 @@ function ui.mux_navigator.open(opts)
   end
 
   local handlers = {
-    escape = function()
+    ["escape|<C-[>"] = function()
       if search_mode then
         search_mode = false
         filter.set("")
