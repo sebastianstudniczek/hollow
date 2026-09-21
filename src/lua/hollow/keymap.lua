@@ -49,44 +49,6 @@ local time_now_ms = function()
   return util.host_now_ms(nil)
 end
 
-local function normalize_key_name(key)
-  local lower = key:lower()
-  if lower == "left" then
-    return "arrow_left"
-  elseif lower == "right" then
-    return "arrow_right"
-  elseif lower == "up" then
-    return "arrow_up"
-  elseif lower == "down" then
-    return "arrow_down"
-  elseif lower == "esc" then
-    return "escape"
-  elseif lower == "cr" or lower == "return" then
-    return "enter"
-  elseif lower == "bs" then
-    return "backspace"
-  elseif lower == "tab" then
-    return "tab"
-  elseif lower == "space" or key == " " then
-    return "space"
-  elseif lower == "pageup" or lower == "page_up" or lower == "pgup" then
-    return "page_up"
-  elseif lower == "pagedown" or lower == "page_down" or lower == "pgdown" or lower == "pgdn" then
-    return "page_down"
-  elseif lower == "home" then
-    return "home"
-  elseif lower == "end" then
-    return "end"
-  elseif lower == "insert" or lower == "ins" then
-    return "insert"
-  elseif lower == "delete" or lower == "del" then
-    return "delete"
-  elseif lower == "backslash" or lower == "bslash" or key == "\\" then
-    return "backslash"
-  end
-  return lower
-end
-
 local SHIFTED_CHAR_KEYS = {
   ["~"] = { key = "backquote", mods = MODS_SHIFT },
   ["!"] = { key = "digit_1", mods = MODS_SHIFT },
@@ -133,6 +95,50 @@ local PLAIN_CHAR_KEYS = {
   ["."] = { key = "period", mods = 0 },
   ["/"] = { key = "slash", mods = 0 },
 }
+
+local function normalize_key_name(key)
+  local lower = key:lower()
+  if lower == "left" then
+    return "arrow_left"
+  elseif lower == "right" then
+    return "arrow_right"
+  elseif lower == "up" then
+    return "arrow_up"
+  elseif lower == "down" then
+    return "arrow_down"
+  elseif lower == "esc" then
+    return "escape"
+  elseif lower == "cr" or lower == "return" then
+    return "enter"
+  elseif lower == "bs" then
+    return "backspace"
+  elseif lower == "tab" then
+    return "tab"
+  elseif lower == "space" or key == " " then
+    return "space"
+  elseif lower == "pageup" or lower == "page_up" or lower == "pgup" then
+    return "page_up"
+  elseif lower == "pagedown" or lower == "page_down" or lower == "pgdown" or lower == "pgdn" then
+    return "page_down"
+  elseif lower == "home" then
+    return "home"
+  elseif lower == "end" then
+    return "end"
+  elseif lower == "insert" or lower == "ins" then
+    return "insert"
+  elseif lower == "delete" or lower == "del" then
+    return "delete"
+  elseif lower == "backslash" or lower == "bslash" or key == "\\" then
+    return "backslash"
+  end
+
+  local plain = PLAIN_CHAR_KEYS[key]
+  if plain ~= nil then
+    return plain.key
+  end
+
+  return lower
+end
 
 local function canonicalize_plain_char(ch)
   if type(ch) ~= "string" or #ch ~= 1 then

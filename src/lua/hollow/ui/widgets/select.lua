@@ -366,14 +366,14 @@ function ui.select.open(opts)
     chrome = opts.chrome or shared.theme_overlay_chrome(theme),
     backdrop = backdrop,
     keys = ui.keys(filter, nav, {
-      escape = function()
+      ["escape|<C-[>"] = function()
         modal.close()
         ui.fire(opts.on_cancel)
       end,
-      arrow_down = function()
+      ["arrow_down|<C-j>"] = function()
         move_selection(1)
       end,
-      arrow_up = function()
+      ["arrow_up|<C-k>"] = function()
         move_selection(-1)
       end,
       enter = function()
