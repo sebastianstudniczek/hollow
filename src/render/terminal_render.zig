@@ -348,7 +348,7 @@ pub fn queueBackgroundAndRasterRow(
             if (last_style_valid and last_style_id == style_id and last_style_selected == is_selected) {
                 break :blk &last_style_info;
             }
-            const info = self.resolveCachedStyle(runtime, queue.row_cells.*, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse break :blk null;
+            const info = self.resolveCachedStyle(runtime, queue.row_cells.*, row.row_y, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse break :blk null;
             last_style_info = info.*;
             last_style_id = style_id;
             last_style_selected = is_selected;
@@ -561,7 +561,7 @@ pub fn queueGlyphRow(
             if (last_style_valid and last_style_id == style_id and last_style_selected == is_selected) {
                 break :blk &last_style_info;
             }
-            const info = self.resolveCachedStyle(runtime, queue.row_cells.*, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse break :blk null;
+            const info = self.resolveCachedStyle(runtime, queue.row_cells.*, row.row_y, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse break :blk null;
             last_style_info = info.*;
             last_style_id = style_id;
             last_style_selected = is_selected;
@@ -748,7 +748,7 @@ pub fn drawRowDecorations(
             if (last_style_valid and last_style_id == style_id and last_style_selected == is_selected) {
                 break :blk &last_style_info;
             }
-            const info = self.resolveCachedStyle(runtime, queue.row_cells.*, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse break :blk null;
+            const info = self.resolveCachedStyle(runtime, queue.row_cells.*, row.row_y, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse break :blk null;
             last_style_info = info.*;
             last_style_id = style_id;
             last_style_selected = is_selected;
@@ -910,7 +910,7 @@ pub fn resolveCellBackground(
     const bg: ghostty.ColorRgb = if (!is_bg_tag and style_id != 0)
         if (cached_style) |style|
             style.bg
-        else if (self.resolveCachedStyle(runtime, queue.row_cells.*, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette)) |style|
+        else if (self.resolveCachedStyle(runtime, queue.row_cells.*, row.row_y, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette)) |style|
             style.bg
         else
             runtime.cellBackground(queue.row_cells.*) orelse queue.colors.default_bg
@@ -944,6 +944,7 @@ pub inline fn resolveCellTextStyle(
     self: *FtRenderer,
     runtime: *ghostty.Runtime,
     queue: *const QueueContext,
+    row: usize,
     style_id: u16,
     is_selected: bool,
 ) ?CellTextStyle {
@@ -956,7 +957,7 @@ pub inline fn resolveCellTextStyle(
 
     var resolved = CellTextStyle{ .face_idx = 0, .fg = queue.colors.default_fg };
     {
-        const info = self.resolveCachedStyle(runtime, queue.row_cells.*, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse return null;
+        const info = self.resolveCachedStyle(runtime, queue.row_cells.*, row, style_id, is_selected, queue.colors.default_fg, queue.colors.default_bg, queue.colors.selection_fg, queue.colors.palette) orelse return null;
         resolved.face_idx = info.face_idx;
         resolved.fg = info.fg;
         resolved.needs_decorations = info.needs_decorations;

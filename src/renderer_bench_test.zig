@@ -18,6 +18,10 @@ test "direct glyph vertices include pane offset" {
     try benchmark.runPaneGlyphOffsetTest(std.testing.allocator);
 }
 
+test "renderer preserves colors across page-local style IDs" {
+    try benchmark.runPageStyleTest(std.testing.allocator);
+}
+
 test "text caches remain bounded under unique output" {
     try benchmark.runCachePressureTest(std.testing.allocator);
 }

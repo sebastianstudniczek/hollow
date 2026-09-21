@@ -1090,8 +1090,8 @@ pub const FtRenderer = struct {
     pub inline fn styleCacheReset(self: *FtRenderer) void {
         glyph_batch.styleCacheReset(self);
     }
-    pub inline fn resolveCachedStyle(self: *FtRenderer, runtime: *ghostty.Runtime, row_cells: ?*anyopaque, style_id: u16, selected: bool, default_fg: ghostty.ColorRgb, default_bg: ghostty.ColorRgb, selection_fg: ghostty.ColorRgb, palette: *const [256]ghostty.ColorRgb) ?*const CachedStyleInfo {
-        return glyph_batch.resolveCachedStyle(self, runtime, row_cells, style_id, selected, default_fg, default_bg, selection_fg, palette);
+    pub inline fn resolveCachedStyle(self: *FtRenderer, runtime: *ghostty.Runtime, row_cells: ?*anyopaque, row: usize, style_id: u16, selected: bool, default_fg: ghostty.ColorRgb, default_bg: ghostty.ColorRgb, selection_fg: ghostty.ColorRgb, palette: *const [256]ghostty.ColorRgb) ?*const CachedStyleInfo {
+        return glyph_batch.resolveCachedStyle(self, runtime, row_cells, row, style_id, selected, default_fg, default_bg, selection_fg, palette);
     }
     pub inline fn styleCacheSlot(self: *FtRenderer, style_id: u16, selected: bool) usize {
         return glyph_batch.styleCacheSlot(self, style_id, selected);

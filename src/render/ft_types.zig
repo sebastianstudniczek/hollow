@@ -188,6 +188,7 @@ pub const AtlasDrawRun = struct {
 pub const MAX_ATLAS_DRAW_RUNS: usize = 64;
 
 pub const CachedStyleInfo = struct {
+    row: usize,
     style_id: u16,
     selected: bool,
     face_idx: u8,

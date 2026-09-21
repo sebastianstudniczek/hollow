@@ -946,6 +946,38 @@ pub fn runPaneGlyphOffsetTest(allocator: std.mem.Allocator) !void {
     }
 }
 
+pub fn runPageStyleTest(allocator: std.mem.Allocator) !void {
+    const options = Options{ .rows = 512, .cols = 240, .warmup = 0, .iterations = 1 };
+    var corpus: std.ArrayList(u8) = .empty;
+    defer corpus.deinit(allocator);
+    try corpus.appendSlice(allocator, "\x1b[?25l");
+    for (0..options.rows) |row| {
+        try appendFormat(&corpus, allocator, "\x1b[{d};1H\x1b[38;2;{d};40;90mA", .{ row + 1, row % 200 + 30 });
+    }
+
+    var harness = try Harness.init(allocator, options);
+    defer harness.deinit();
+    var session = try Session.init(&harness.runtime, options.cols, options.rows);
+    defer session.deinit();
+    session.activate();
+    try harness.prepare(&session, corpus.items);
+
+    // Each row contains one identical glyph, but its color differs. The tall
+    // viewport crosses Ghostty pages whose independent style sets reuse IDs.
+    for ([_]bool{ true, false }) |force_full| {
+        harness.queue(&session, force_full);
+        try std.testing.expectEqual(options.rows * 4, harness.renderer.glyph_verts_count);
+        for (0..options.rows) |row| {
+            for (harness.renderer.glyph_verts_cpu[row * 4 ..][0..4]) |vertex| {
+                try std.testing.expectEqual(@as(u8, @intCast(row % 200 + 30)), vertex.r);
+                try std.testing.expectEqual(@as(u8, 40), vertex.g);
+                try std.testing.expectEqual(@as(u8, 90), vertex.b);
+            }
+        }
+        harness.submit(force_full);
+    }
+}
+
 pub fn runUnicodeGraphemeTest(allocator: std.mem.Allocator) !void {
     const options = Options{ .rows = 2, .cols = 80, .warmup = 0, .iterations = 1 };
     const corpus = "A\u{0300}\u{0301}\u{0302}\u{0303}\u{0304}\u{0305}\u{0306}\u{0307}\u{0308}\u{0309}\u{030A}\u{030B}\u{030C}\u{030D}\u{030E}\u{030F}\u{0310}\u{0311}\u{0312}\u{0313}\u{0314}\u{0315}\u{0316}\u{0317}\u{0318}\u{0319}\u{031A}\n";

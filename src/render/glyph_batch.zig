@@ -439,10 +439,12 @@ pub inline fn styleCacheReset(self: *FtRenderer) void {
     @memset(&self.style_cache, null);
 }
 
-pub inline fn resolveCachedStyle(self: *FtRenderer, runtime: *ghostty.Runtime, row_cells: ?*anyopaque, style_id: u16, selected: bool, default_fg: ghostty.ColorRgb, default_bg: ghostty.ColorRgb, selection_fg: ghostty.ColorRgb, palette: *const [256]ghostty.ColorRgb) ?*const CachedStyleInfo {
+pub inline fn resolveCachedStyle(self: *FtRenderer, runtime: *ghostty.Runtime, row_cells: ?*anyopaque, row: usize, style_id: u16, selected: bool, default_fg: ghostty.ColorRgb, default_bg: ghostty.ColorRgb, selection_fg: ghostty.ColorRgb, palette: *const [256]ghostty.ColorRgb) ?*const CachedStyleInfo {
     const slot = self.styleCacheSlot(style_id, selected);
     if (self.style_cache[slot]) |*cached| {
-        if (cached.style_id == style_id and cached.selected == selected) return cached;
+        // Ghostty style IDs belong to a page, not the entire viewport. A row
+        // stays within one page; queueTerminal resets the cache each snapshot.
+        if (cached.row == row and cached.style_id == style_id and cached.selected == selected) return cached;
     }
 
     var s: ghostty.Style = undefined;
@@ -460,6 +462,7 @@ pub inline fn resolveCachedStyle(self: *FtRenderer, runtime: *ghostty.Runtime, r
         resolved_fg;
     const effective_bg = if (s.inverse) resolved_fg else resolved_bg;
     const info = CachedStyleInfo{
+        .row = row,
         .style_id = style_id,
         .selected = selected,
         .face_idx = if (s.bold and s.italic) 2 else if (s.bold) 1 else if (s.italic) 3 else 0,
