@@ -531,6 +531,20 @@ local function open_workspace_items()
     end
   end
 
+  table.sort(items, function(a, b)
+    if a.is_active ~= b.is_active then
+      return not a.is_active
+    end
+
+    local a_time = tonumber(a.last_opened_at) or 0
+    local b_time = tonumber(b.last_opened_at) or 0
+    if a_time ~= b_time then
+      return a_time > b_time
+    end
+
+    return a.name < b.name
+  end)
+
   return items
 end
 
@@ -563,22 +577,6 @@ local function merged_workspace_items(force_refresh)
       existing.cwd = workspace.cwd
     end
   end
-
-  table.sort(merged, function(a, b)
-    if a.is_open ~= b.is_open then
-      return a.is_open
-    end
-    if a.is_active ~= b.is_active then
-      return not a.is_active
-    end
-
-    local a_time = tonumber(a.last_opened_at) or 0
-    local b_time = tonumber(b.last_opened_at) or 0
-    if a_time ~= b_time then
-      return a_time > b_time
-    end
-    return a.name < b.name
-  end)
 
   return merged
 end
