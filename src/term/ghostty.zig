@@ -1,5 +1,14 @@
 const std = @import("std");
 
+/// Version hollow reports when impersonating Ghostty (XTVERSION and
+/// TERM_PROGRAM_VERSION). Tracks the libghostty-vt revision pinned in
+/// build.zig.zon, since that is what determines the terminal capabilities we
+/// actually expose. Consumers match on "ghostty <version>" — the version is
+/// not optional: tmux, for one, identifies terminals with
+/// strncmp(reply, "ghostty ", 8) and files a bare name under an unknown
+/// terminal type, losing the Ghostty terminal-features.
+pub const reported_version = "1.3.2";
+
 pub const success = 0;
 pub const out_of_space = -3;
 pub const no_value = -4;

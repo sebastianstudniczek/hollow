@@ -408,6 +408,9 @@ pub const Pane = struct {
         try env_block.appendSlice(self.allocator, "TERM_PROGRAM=ghostty");
         try env_block.append(self.allocator, 0);
 
+        try env_block.appendSlice(self.allocator, "TERM_PROGRAM_VERSION=" ++ ghostty.reported_version);
+        try env_block.append(self.allocator, 0);
+
         // Domain-specific environment variables
         const domain_env = cfg.envForDomain(domain_name);
         for (domain_env) |pair| {

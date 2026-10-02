@@ -2022,6 +2022,7 @@ function plugins.sync() end
 ---@field scroll_active_bottom fun()
 ---@field prompt_jump fun(direction: "prev"|"next")
 ---@field set_bar_cache_state fun(surface: string, dirty: boolean, expires_at_ms: integer, visible: boolean)
+---@field request_layout_refresh fun()
 ---@field copy_mode_enter fun()
 ---@field copy_mode_exit fun()
 ---@field copy_mode_move fun(direction: "left"|"right"|"up"|"down"|"page_up"|"page_down"|"line_start"|"line_end"|"top"|"bottom", extend?: boolean)

@@ -256,6 +256,7 @@ pub const AppCallbacks = struct {
     is_leader_active: *const fn (app: *anyopaque) bool,
     set_leader_state: *const fn (app: *anyopaque, active: bool, expires_at_ms: i64) void,
     set_bar_cache_state: *const fn (app: *anyopaque, surface: []const u8, dirty: bool, expires_at_ms: i64, visible: bool) void,
+    request_layout_refresh: *const fn (app: *anyopaque) void,
     copy_selection: *const fn (app: *anyopaque) void,
     paste_clipboard: *const fn (app: *anyopaque) void,
     scroll_active: *const fn (app: *anyopaque, delta: isize) void,
@@ -1989,6 +1990,10 @@ pub const Runtime = struct {
         api.push_light_userdata(self.state, self.context);
         api.push_cclosure(self.state, l_set_bar_cache_state, 1);
         api.set_field(self.state, -2, "set_bar_cache_state");
+
+        api.push_light_userdata(self.state, self.context);
+        api.push_cclosure(self.state, l_request_layout_refresh, 1);
+        api.set_field(self.state, -2, "request_layout_refresh");
 
         api.push_light_userdata(self.state, self.context);
         api.push_cclosure(self.state, l_switch_tab, 1);
@@ -5552,6 +5557,16 @@ fn l_set_bar_cache_state(state: *State) callconv(.c) c_int {
         0;
     const visible = api.to_boolean(state, 4) != 0;
     cbs.set_bar_cache_state(cbs.app, surface[0..surface_len], dirty, expires_at_ms, visible);
+    return 0;
+}
+
+/// hollow.request_layout_refresh()  — drop the cached bar/sidebar insets and
+/// resize the panes to match. For Lua-side changes that alter how much of the
+/// window the chrome reserves but that the host has no other way to observe.
+fn l_request_layout_refresh(state: *State) callconv(.c) c_int {
+    const ctx = bridgeContext(state);
+    const cbs = ctx.app_callbacks orelse return 0;
+    cbs.request_layout_refresh(cbs.app);
     return 0;
 }
 

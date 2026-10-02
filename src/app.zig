@@ -1158,6 +1158,7 @@ pub const App = struct {
             .is_leader_active = lua_callbacks.luaIsLeaderActiveCallback,
             .set_leader_state = lua_callbacks.luaSetLeaderStateCallback,
             .set_bar_cache_state = lua_callbacks.luaSetBarCacheStateCallback,
+            .request_layout_refresh = lua_callbacks.luaRequestLayoutRefreshCallback,
             .copy_selection = lua_callbacks.luaCopySelectionCallback,
             .paste_clipboard = lua_callbacks.luaPasteClipboardCallback,
             .scroll_active = lua_callbacks.luaScrollActiveCallback,

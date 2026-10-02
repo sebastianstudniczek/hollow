@@ -44,6 +44,7 @@ local function make_host_api()
     set_tab_title = nil,
     set_pane_foreground_process = nil,
     reload_config = 0,
+    layout_refreshes = 0,
     scroll = nil,
     copy_mode = nil,
     quick_select = nil,
@@ -224,6 +225,10 @@ local function make_host_api()
   function host_api.reload_config()
     recorded.reload_config = recorded.reload_config + 1
     return true
+  end
+
+  function host_api.request_layout_refresh()
+    recorded.layout_refreshes = recorded.layout_refreshes + 1
   end
 
   function host_api.pane_exists(pane_id)
