@@ -4,6 +4,15 @@ local ui = hollow.ui
 local shared = require("hollow.ui.shared")
 local widget_core = require("hollow.ui.widgets.core")
 local M = {}
+
+local function request_layout_refresh()
+  if
+    type(state.host_api) == "table" and type(state.host_api.request_layout_refresh) == "function"
+  then
+    state.host_api.request_layout_refresh()
+  end
+end
+
 function M.install()
   ui.sidebar = ui.sidebar or {}
 
@@ -16,11 +25,13 @@ function M.install()
     state.ui.mounted_sidebar = widget
     state.ui.sidebar_visible = widget.hidden ~= true
     widget_core.mount_widget(widget)
+    request_layout_refresh()
   end
   function ui.sidebar.unmount()
     widget_core.unmount_widget(state.ui.mounted_sidebar)
     state.ui.mounted_sidebar = nil
     state.ui.sidebar_visible = false
+    request_layout_refresh()
   end
 
   function ui.sidebar.toggle()
@@ -28,6 +39,7 @@ function M.install()
       return false
     end
     state.ui.sidebar_visible = not state.ui.sidebar_visible
+    request_layout_refresh()
     return state.ui.sidebar_visible
   end
 

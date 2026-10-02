@@ -480,6 +480,11 @@ pub fn luaSetBarCacheStateCallback(app_ptr: *anyopaque, surface: []const u8, dir
     app.setBarCacheState(bar_surface, dirty, expires_at_ms, visible);
 }
 
+pub fn luaRequestLayoutRefreshCallback(app_ptr: *anyopaque) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
+    app.requestLayoutRefresh();
+}
+
 pub fn luaCopySelectionCallback(app_ptr: *anyopaque) void {
     const app: *App = @ptrCast(@alignCast(app_ptr));
     _ = app.enqueueMouse(.copy_selection);
