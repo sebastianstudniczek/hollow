@@ -126,7 +126,7 @@ hollow-cli workspace rename <name> [--id ID|--index N]
 ### `tab`
 
 ```bash
-hollow-cli tab new [--cmd CMD] [--domain NAME]
+hollow-cli tab new [--cmd CMD] [--domain NAME] [--cwd DIR]
 hollow-cli tab close [--id ID|--index N]
 hollow-cli tab next
 hollow-cli tab prev

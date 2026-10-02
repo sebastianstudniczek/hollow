@@ -363,8 +363,9 @@ const Runner = struct {
         if (std.mem.eql(u8, sub, "new")) {
             var cmd: ?[]const u8 = null;
             var domain: ?[]const u8 = null;
-            try self.parseTabNewFlags(rest, &cmd, &domain);
-            return try self.printEvent(.{ .kind = .tab_new, .cmd = if (cmd) |v| try self.allocator.dupe(u8, v) else null, .domain = if (domain) |v| try self.allocator.dupe(u8, v) else null });
+            var cwd: ?[]const u8 = null;
+            try self.parseTabNewFlags(rest, &cmd, &domain, &cwd);
+            return try self.printEvent(.{ .kind = .tab_new, .cmd = if (cmd) |v| try self.allocator.dupe(u8, v) else null, .domain = if (domain) |v| try self.allocator.dupe(u8, v) else null, .cwd = if (cwd) |v| try self.allocator.dupe(u8, v) else null });
         }
         if (std.mem.eql(u8, sub, "close")) {
             var id: ?usize = null;
@@ -933,7 +934,7 @@ const Runner = struct {
         }
     }
 
-    fn parseTabNewFlags(self: *Runner, args: []const []const u8, cmd: *?[]const u8, domain: *?[]const u8) !void {
+    fn parseTabNewFlags(self: *Runner, args: []const []const u8, cmd: *?[]const u8, domain: *?[]const u8, cwd: *?[]const u8) !void {
         var i: usize = 0;
         while (i < args.len) : (i += 1) {
             const arg = args[i];
@@ -941,6 +942,12 @@ const Runner = struct {
                 i += 1;
                 if (i >= args.len) return self.fail("missing cmd value", "invalid_args", 2);
                 cmd.* = args[i];
+                continue;
+            }
+            if (std.mem.eql(u8, arg, "--cwd")) {
+                i += 1;
+                if (i >= args.len) return self.fail("missing cwd value", "invalid_args", 2);
+                cwd.* = args[i];
                 continue;
             }
             if (std.mem.eql(u8, arg, "--domain")) {

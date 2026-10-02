@@ -162,6 +162,7 @@ class HollowCli:
         p = tab_sub.add_parser("new", parents=[self.common_parser])
         p.add_argument("--cmd")
         p.add_argument("--domain")
+        p.add_argument("--cwd")
         p.set_defaults(handler=self.handle_tab_new)
 
         p = tab_sub.add_parser("close", parents=[self.common_parser])
@@ -357,7 +358,7 @@ class HollowCli:
         return self.print_event("set_workspace_name", self.clean({"id": workspace_id, "name": args.name}))
 
     def handle_tab_new(self, args):
-        return self.print_event("new_tab", self.clean({"command": args.cmd, "domain": args.domain}))
+        return self.print_event("new_tab", self.clean({"command": args.cmd, "domain": args.domain, "cwd": args.cwd}))
 
     def handle_tab_close(self, args):
         tab_id = args.id or self.resolve_index("tabs", args.index)
