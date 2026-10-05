@@ -1692,6 +1692,7 @@ function select.close() end
 ---@field source "open"|"user"
 ---@field is_active boolean
 ---@field is_open boolean
+---@field has_bell boolean Any pane in this workspace has bell attention
 ---@field open_index? integer
 ---@field open_index? integer Used only for switching to an already-open workspace
 ---@field last_opened_at? integer

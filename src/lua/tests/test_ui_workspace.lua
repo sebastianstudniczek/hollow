@@ -248,3 +248,113 @@ describe("UI workspace test suite", function()
     end)
   end)
 end)
+
+describe("Workspace switcher bell attention", function()
+  local hollow
+  local tree
+
+  before_each(function()
+    hollow = harness.boot().hollow
+    tree = {
+      {
+        id = 41,
+        index = 1,
+        name = "main",
+        domain = "main",
+        is_active = true,
+        tabs = { { panes = { { has_bell = false } } } },
+      },
+      {
+        id = 42,
+        index = 2,
+        name = "alpha",
+        domain = "main",
+        is_active = false,
+        tabs = { { panes = { { has_bell = false } } } },
+      },
+      {
+        id = 43,
+        index = 3,
+        name = "zulu",
+        domain = "main",
+        is_active = false,
+        tabs = {
+          { panes = { { has_bell = false } } },
+          { panes = { { has_bell = false }, { has_bell = true } } },
+        },
+      },
+    }
+    hollow.term.mux_tree = function()
+      return tree
+    end
+    hollow.ui.workspace.configure({
+      known_workspaces = function()
+        return { "known" }
+      end,
+    })
+  end)
+
+  it("prioritizes attention from any pane in any tab", function()
+    local items = hollow.ui.workspace.items()
+    harness.assert_equal(items[1].name, "zulu", "bell workspace should sort before quiet workspaces")
+    harness.assert_true(items[1].has_bell, "bell state should include inactive tabs and split panes")
+    harness.assert_equal(items[2].name, "alpha", "quiet inactive workspace should retain its order")
+    harness.assert_equal(items[3].name, "main", "quiet active workspace should retain its order")
+    harness.assert_equal(
+      items[4].name,
+      "known",
+      "known workspaces should remain after open workspaces"
+    )
+    harness.assert_equal(items[4].has_bell, false, "closed known workspaces should have no bell")
+  end)
+
+  it("prioritizes active workspace attention and refreshes cleared bells without cache invalidation", function()
+    tree[1].tabs[1].panes[1].has_bell = true
+    local items = hollow.ui.workspace.items()
+    harness.assert_equal(items[1].name, "zulu", "inactive bell workspace should remain first")
+    harness.assert_equal(
+      items[2].name,
+      "main",
+      "active bell workspace should precede quiet workspaces"
+    )
+    harness.assert_equal(items[3].name, "alpha", "quiet workspace should follow bell workspaces")
+
+    tree[1].tabs[1].panes[1].has_bell = false
+    tree[3].tabs[2].panes[2].has_bell = false
+    items = hollow.ui.workspace.items()
+    harness.assert_equal(items[1].name, "alpha", "clearing bells should restore existing ordering")
+    harness.assert_equal(items[2].name, "zulu", "cleared workspace should use normal ordering")
+    harness.assert_equal(
+      items[2].has_bell,
+      false,
+      "bell state should not be cached with discovered items"
+    )
+    harness.assert_equal(
+      items[3].name,
+      "main",
+      "quiet active workspace should remain last among open workspaces"
+    )
+  end)
+
+  it("renders a warning-colored bell icon on the first workspace row", function()
+    hollow.ui.workspace.open_switcher()
+    local overlay = hollow.ui._overlay_state()
+    local warn = hollow.ui.resolve_theme("select").notify_levels.warn
+    local saw_bell = false
+    local row_text = ""
+    for _, segment in ipairs(overlay[1].rows[5].segments) do
+      row_text = row_text .. (segment.text or "")
+      if (segment.text or ""):find("󰂚", 1, true) then
+        saw_bell = true
+        harness.assert_equal(segment.fg, warn, "bell icon should use notification warning color")
+        harness.assert_true(segment.bold, "bell icon should be bold")
+      end
+    end
+    harness.assert_true(saw_bell, "default workspace formatter should show bell icon")
+    harness.assert_true(
+      row_text:find("zulu", 1, true) ~= nil,
+      "first selectable row should be bell workspace"
+    )
+    hollow.ui.overlay.clear()
+  end)
+end)

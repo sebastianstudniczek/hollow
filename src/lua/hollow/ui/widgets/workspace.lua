@@ -3,6 +3,7 @@ local color = require("hollow.color")
 local format = require("hollow.ui.widgets.format")
 local shared = require("hollow.ui.shared")
 local source = require("hollow.ui.workspace.source")
+local theme_api = require("hollow.theme")
 local util = require("hollow.util")
 
 ---@type Hollow
@@ -16,6 +17,7 @@ local DEFAULT_PROMPT = "Workspaces"
 local DEFAULT_SELECT_WIDTH = 96
 local DEFAULT_SELECT_MAX_HEIGHT = 24
 local ACTIVE_WORKSPACE_MARKER = "•"
+local BELL_WORKSPACE_MARKER = "󰂚"
 local DEFAULT_STATUS_COLUMN_WIDTH = 2
 local DEFAULT_NAME_COLUMN_WIDTH = 24
 local DEFAULT_COLUMN_GAP = 2
@@ -56,6 +58,7 @@ local function derived_palette()
     subtle = color.brighten_hex_color(palette.background, 0.35, palette.foreground),
     open = palette.bright_green,
     user = palette.bright_blue,
+    bell = theme_api.resolve_widget("select").notify_levels.warn,
   }
 end
 
@@ -95,11 +98,13 @@ local function default_format_item(workspace)
 
   return format.columns({
     {
-      text = workspace.is_active and ACTIVE_WORKSPACE_MARKER or " ",
+      text = workspace.has_bell and BELL_WORKSPACE_MARKER
+        or (workspace.is_active and ACTIVE_WORKSPACE_MARKER or " "),
       width = status_width,
       style = {
-        fg = workspace.is_active and palette.open or palette.subtle,
-        bold = workspace.is_active,
+        fg = workspace.has_bell and palette.bell
+          or (workspace.is_active and palette.open or palette.subtle),
+        bold = workspace.has_bell or workspace.is_active,
       },
     },
     { text = "", width = gap_width, style = { fg = palette.subtle } },

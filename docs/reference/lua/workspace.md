@@ -39,6 +39,7 @@ HollowUiWorkspaceItem = {
   source = "open" | "user" | "local" | "wsl" | "ssh",
   is_active = boolean,
   is_open = boolean,
+  has_bell = boolean,
   open_index = integer | nil,
   last_opened_at = integer | nil,
 }
@@ -124,6 +125,11 @@ Recent activity timestamps are updated from terminal events
 (tab activation, cwd change, title change, tab close).
 
 ## Opening and switching
+
+Workspaces with bell attention in any pane, across all tabs, appear first and show a yellow bell icon in the default formatter.
+Within each bell group, existing workspace ordering is preserved.
+Bell state is refreshed each time the picker opens or `items()` is called.
+Custom `format_item` callbacks can use `workspace.has_bell` to render their own indicator.
 
 `open_switcher()` shows the picker. Default actions:
 

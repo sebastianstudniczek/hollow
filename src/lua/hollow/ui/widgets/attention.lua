@@ -23,7 +23,7 @@ function M.topbar_button()
     id = "attention-button",
     render = function()
       if has_attention_anywhere() then
-        return ui.span("● ", {
+        return ui.span("󰂚 ", {
           fg = theme_api.resolve_widget("select").notify_levels.warn,
           bold = true,
         })

@@ -339,6 +339,7 @@ local function normalize_possible_workspace(item)
       source = "user",
       is_active = false,
       is_open = false,
+      has_bell = false,
     }
   end
 
@@ -363,6 +364,7 @@ local function normalize_possible_workspace(item)
     source = trim_string(item.source) ~= "" and trim_string(item.source) or "user",
     is_active = false,
     is_open = false,
+    has_bell = false,
   }
 end
 
@@ -506,7 +508,7 @@ end
 
 local function open_workspace_items()
   local items = {}
-  for _, workspace in ipairs(hollow.term.workspaces()) do
+  for _, workspace in ipairs(hollow.term.mux_tree()) do
     local domain = workspace.domain or current_domain_name()
     local cwd = first_pane_cwd(workspace) or remembered_workspace_cwd(workspace.name, domain)
     local id = workspace_identity(workspace.name, cwd, domain)
@@ -522,6 +524,11 @@ local function open_workspace_items()
       source = "open",
       is_active = workspace.is_active == true,
       is_open = true,
+      has_bell = hollow.tbl(workspace.tabs):some(function(tab)
+        return hollow.tbl(tab.panes):some(function(pane)
+          return pane.has_bell
+        end)
+      end),
       open_index = workspace.index,
       last_opened_at = switcher_state().last_opened[id],
     }
@@ -532,6 +539,10 @@ local function open_workspace_items()
   end
 
   table.sort(items, function(a, b)
+    if a.has_bell ~= b.has_bell then
+      return a.has_bell
+    end
+
     if a.is_active ~= b.is_active then
       return not a.is_active
     end
