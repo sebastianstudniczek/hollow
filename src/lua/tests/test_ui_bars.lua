@@ -332,6 +332,53 @@ describe("UI bars test suite", function()
     end)
   end)
 
+  describe("leader hint style config", function()
+    it("hides the bottombar and shows no overlay when style is none", function()
+      hollow.config.set({ leader_hint_style = "none" })
+      local leader_key, leader_mods = hollow.keymap.parse_chord("<C-Space>")
+      harness.assert_true(on_key(leader_key, leader_mods), "leader key should activate leader mode")
+      harness.assert_true(
+        hollow.ui._bottombar_state() == nil,
+        "bottombar should stay hidden when leader_hint_style is none"
+      )
+      harness.assert_true(
+        hollow.ui._overlay_state() == nil,
+        "no overlay should appear when leader_hint_style is none"
+      )
+      harness.assert_true(on_key("z", 0), "unmatched leader continuation should clear leader mode")
+    end)
+
+    it("renders a floating overlay instead of the bottombar when style is overlay", function()
+      hollow.config.set({ leader_hint_style = "overlay" })
+      local leader_key, leader_mods = hollow.keymap.parse_chord("<C-Space>")
+      harness.assert_true(on_key(leader_key, leader_mods), "leader key should activate leader mode")
+      harness.assert_true(
+        hollow.ui._bottombar_state() == nil,
+        "bottombar should stay hidden when leader_hint_style is overlay"
+      )
+      local overlay_state = hollow.ui._overlay_state()
+      harness.assert_true(
+        overlay_state ~= nil,
+        "an overlay should appear when leader_hint_style is overlay"
+      )
+      local leader_overlay = overlay_state[#overlay_state]
+      harness.assert_true(
+        leader_overlay.rows[1].segments[1].text:find("LEADER", 1, true) ~= nil,
+        "leader overlay should identify leader mode"
+      )
+      harness.assert_true(on_key("z", 0), "unmatched leader continuation should clear leader mode")
+      harness.assert_true(
+        hollow.ui._bottombar_state() == nil,
+        "bottombar should stay hidden after leader mode resets"
+      )
+      harness.assert_true(
+        hollow.ui._overlay_state() == nil,
+        "leader overlay should close after leader mode resets"
+      )
+      hollow.config.set({ leader_hint_style = "bar" })
+    end)
+  end)
+
   describe("copy mode bottombar", function()
     it("shows copy mode status and legend", function()
       local leader_key, leader_mods = hollow.keymap.parse_chord("<C-Space>")

@@ -8,6 +8,7 @@
 ---@alias HollowFontStyle "normal"|"italic"|"oblique"
 ---@alias HollowCursorStyle "block"|"bar"|"underline"|"block_hollow"
 ---@alias HollowTopBarMode "always"|"tabs"
+---@alias HollowLeaderHintStyle "bar"|"overlay"|"none"
 ---@alias HollowSidebarSide "left"|"right"
 ---@alias HollowOverlayAlign "center"|"top_left"|"top_center"|"top_right"|"left_center"|"right_center"|"bottom_left"|"bottom_center"|"bottom_right"|"left"|"right"|"top"|"bottom"
 ---@class HollowUiThemeBackdrop
@@ -414,6 +415,7 @@
 ---@field bottom_bar_height? integer
 ---@field bottom_bar_bg? HollowColor
 ---@field bottom_bar_draw_status? boolean
+---@field leader_hint_style? HollowLeaderHintStyle
 ---@field scrollbar? HollowScrollbarConfig
 ---@field hyperlinks? HollowHyperlinksConfig
 ---@field quick_select? HollowQuickSelectConfig

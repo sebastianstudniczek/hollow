@@ -117,6 +117,18 @@ hollow.config.set({
 })
 ```
 
+### Leader-key hint
+
+The `LEADER` chip and the hint legend shown while a leader sequence is
+pending can be drawn in the bottom bar (default), as a floating overlay
+over the terminal content, or hidden entirely:
+
+```lua
+hollow.config.set({
+  leader_hint_style = "overlay", -- "bar" (default) | "overlay" | "none"
+})
+```
+
 ### Performance and debugging
 
 ```lua

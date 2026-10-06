@@ -39,6 +39,7 @@ in the shipped base config.
 | `top_bar_mode`                                                                    | `"always"` \| `"tabs"`         | When to show the top bar                                   |
 | `top_bar_height`, `top_bar_bg`                                                    | integer, color                 | Top bar geometry                                           |
 | `bottom_bar_show`, `bottom_bar_height`, `bottom_bar_bg`, `bottom_bar_draw_status` | mixed                          | Bottom bar                                                 |
+| `leader_hint_style`                                                               | `"bar"` \| `"overlay"` \| `"none"` | How to show the leader-key chip and hint legend (default `"bar"`) |
 | `scrollbar`                                                                       | table                          | Scrollbar config                                           |
 | `hyperlinks`                                                                      | table                          | OSC 8 hyperlink config                                     |
 | `cursor`                                                                          | table                          | Cursor style, blink                                        |

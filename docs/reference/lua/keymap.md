@@ -116,7 +116,9 @@ HollowLeaderState = {
 }
 ```
 
-Useful for showing a leader HUD in the top bar.
+Useful for showing a leader HUD. The built-in bottom bar already does
+this; set `leader_hint_style` (see [config](config.md)) to `"overlay"`
+to float it over the terminal instead, or `"none"` to hide it.
 
 ## Modal notes
 
