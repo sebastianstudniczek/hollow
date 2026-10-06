@@ -143,8 +143,8 @@ function providers.domains()
     local shell_str = type(shell) == "string" and shell or ""
     entries[#entries + 1] = new_entry({
       name = name,
-      mode_label = (name == current_domain) and "[current]" or "",
-      desc = shell_str ~= "" and ("(" .. shell_str .. ")") or "",
+      is_active = name == current_domain,
+      desc = shell_str,
       category = "general",
       category_label = "Domain",
       domain_name = name,
@@ -270,25 +270,43 @@ end
 ---@return HollowUiRowNode
 local function render_entry_row(entry, is_selected, is_hovered, theme, row_options, query)
   local chord_text = #entry.chords > 0 and ("  " .. table.concat(entry.chords, " ")) or ""
+  local right_text = entry.domain_name and entry.desc or chord_text
   local label_text = (entry.mode_label ~= "" and (entry.mode_label .. " ") or "")
-    .. (entry.desc ~= "" and entry.desc or entry.display_name)
+    .. (
+      entry.domain_name and entry.display_name
+      or (entry.desc ~= "" and entry.desc or entry.display_name)
+    )
   local emphasize = is_selected or is_hovered
   local fg =
     util.state_value(is_selected, is_hovered, theme.selected_fg, theme.selected_fg, theme.fg)
+  local active_color = shared.resolve_theme().palette.bright_green
+  local label_fg = entry.domain_name and entry.is_active and active_color or fg
   local label_nodes = hollow
     .tbl({
       ui.span(marker(is_selected, is_hovered, "  "), { fg = fg, bold = emphasize }),
     })
+    :concat(entry.domain_name and {
+      ui.span(entry.is_active and "• " or "  ", {
+        fg = entry.is_active and active_color or theme.muted,
+        bold = entry.is_active,
+      }),
+    } or {})
     :concat(
       shared.highlight_inline_nodes(
-        { ui.span(label_text, { fg = fg }) },
+        { ui.span(label_text, { fg = label_fg, bold = entry.domain_name and entry.is_active }) },
         query,
         { fg = theme.panel_border, bold = true }
       )
     )
-    :concat(chord_text ~= "" and {
+    :concat(right_text ~= "" and {
       ui.spacer(),
-      ui.span(chord_text, { fg = theme.panel_border or theme.muted }),
+      ui.group(
+        shared.highlight_inline_nodes(
+          { ui.span(right_text, { fg = theme.panel_border or theme.muted }) },
+          query,
+          { fg = theme.panel_border, bold = true }
+        )
+      ),
     } or {})
     :get()
   local fill_bg = util.state_value(is_selected, is_hovered, theme.selection_bg, theme.hover_bg)

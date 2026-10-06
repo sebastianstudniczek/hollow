@@ -112,6 +112,38 @@ describe("UI palette test suite", function()
       hollow.ui.overlay.clear()
     end)
 
+    it("shows domain names on the left and shell commands on the right", function()
+      hollow.config.set({ domains = { main = { shell = "sh" } } })
+      hollow.ui.command_palette.open({
+        entries = hollow.ui.command_palette.build_domain_entries(),
+        query = "sh",
+      })
+      local overlay = hollow.ui._overlay_state()
+      local segments = overlay[1].rows[6].segments
+      harness.assert_equal(segments[3].text, "main", "domain name should appear on the left")
+      local active_color = require("hollow.ui.shared").resolve_theme().palette.bright_green
+      harness.assert_equal(segments[2].text, "• ", "active domain should use the workspace dot")
+      harness.assert_equal(segments[2].fg, active_color, "active dot should use workspace green")
+      harness.assert_equal(segments[3].fg, active_color, "active name should use workspace green")
+      harness.assert_true(segments[3].bold, "active domain name should be bold")
+      harness.assert_true(segments[4].spacer, "domain columns should be separated by a spacer")
+      harness.assert_equal(segments[5].text, "sh", "shell command should appear on the right")
+      harness.assert_true(segments[5].bold, "shell command matches should be highlighted")
+      hollow.ui.overlay.clear()
+    end)
+
+    it("leaves the status slot blank for inactive domains", function()
+      hollow.config.set({ domains = { dev = { shell = "bash" } } })
+      hollow.ui.command_palette.open({
+        entries = hollow.ui.command_palette.build_domain_entries(),
+        query = "dev",
+      })
+      local segments = hollow.ui._overlay_state()[1].rows[6].segments
+      harness.assert_equal(segments[2].text, "  ", "inactive domain should not show a dot")
+      harness.assert_equal(segments[3].text, "dev", "inactive domain name should remain visible")
+      hollow.ui.overlay.clear()
+    end)
+
     it("highlights matched palette text", function()
       hollow.ui.command_palette.open({
         entries = {
