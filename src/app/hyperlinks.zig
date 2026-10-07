@@ -8,6 +8,7 @@ const platform = @import("../platform.zig");
 const app_mod = @import("../app.zig");
 const App = app_mod.App;
 const Pane = @import("../pane.zig").Pane;
+const Hyperlinks = @import("../config.zig").Config.Hyperlinks;
 const CellPoint = selection.CellPoint;
 
 pub const HoveredHyperlink = struct {
@@ -18,30 +19,132 @@ pub const HoveredHyperlink = struct {
 };
 
 const HyperlinkToken = struct {
-    text: []const u8,
     start_col: usize,
     end_col: usize,
     open_text: []const u8,
 };
 
-fn rowTextForHyperlinks(self: *App, pane: *Pane, row: usize, out: []u8) ?[]const u8 {
-    const runtime = if (self.ghostty) |*rt| rt else return null;
-    if (!App.paneRenderHelpersReady(pane)) return null;
-    if (!runtime.populateRowIterator(pane.render_state, &pane.row_iterator)) return null;
+const LinkRow = struct {
+    text: []const u8,
+    wrapped: bool,
+    continuation: bool,
+};
 
-    var row_index: usize = 0;
-    while (runtime.nextRow(pane.row_iterator)) : (row_index += 1) {
-        if (row_index != row) continue;
-        if (!runtime.populateRowCells(pane.row_iterator, &pane.row_cells)) return null;
+const LinkRows = struct {
+    runtime: *ghostty.Runtime,
+    pane: *Pane,
+    ascii: [4096]u8 = undefined,
 
-        var len: usize = 0;
-        while (runtime.nextCell(pane.row_cells)) {
-            text_helpers.appendCellText(runtime, pane.row_cells, out, &len);
+    fn get(self: *LinkRows, row: usize) ?LinkRow {
+        if (!self.runtime.populateRowIterator(self.pane.render_state, &self.pane.row_iterator)) return null;
+        var index: usize = 0;
+        while (self.runtime.nextRow(self.pane.row_iterator)) : (index += 1) {
+            if (index != row) continue;
+            const raw = self.runtime.rowRaw(self.pane.row_iterator);
+            if (!self.runtime.populateRowCells(self.pane.row_iterator, &self.pane.row_cells)) return null;
+            var len: usize = 0;
+            while (self.runtime.nextCell(self.pane.row_cells)) : (len += 1) {
+                if (len == self.ascii.len) return null;
+                var cell_buf: [16]u8 = undefined;
+                var cell_len: usize = 0;
+                text_helpers.appendCellText(self.runtime, self.pane.row_cells, &cell_buf, &cell_len);
+                self.ascii[len] = if (cell_len == 1 and cell_buf[0] < 128) cell_buf[0] else 0;
+            }
+            return .{
+                .text = self.ascii[0..len],
+                .wrapped = self.runtime.rowWrapped(raw),
+                .continuation = self.runtime.rowWrapContinuation(raw),
+            };
         }
-        return out[0..len];
+        return null;
+    }
+};
+
+const www_scheme = "https://";
+
+fn contains(set: []const u8, ch: u8) bool {
+    return std.mem.indexOfScalar(u8, set, ch) != null;
+}
+
+fn isDelimiter(delimiters: []const u8, ch: u8) bool {
+    return ch == 0 or contains(delimiters, ch);
+}
+
+fn hasLinkPrefix(cfg: Hyperlinks, token: []const u8) bool {
+    var prefixes = std.mem.tokenizeScalar(u8, cfg.prefixesOrDefault(), ' ');
+    while (prefixes.next()) |prefix| {
+        if (std.mem.startsWith(u8, token, prefix)) return true;
+    }
+    return false;
+}
+
+// Finds the delimiter-free run under `point`, following soft wraps in both
+// directions, then trims it and clips the result to the hovered row.
+// Rows share the provider's storage, so each one is consumed before the next fetch.
+fn wrappedTokenAt(rows: anytype, point: CellPoint, cfg: Hyperlinks, out: []u8) ?HyperlinkToken {
+    const delimiters = cfg.delimitersOrDefault();
+    var row_index = point.row;
+    var row = rows.get(row_index) orelse return null;
+    if (point.col >= row.text.len or isDelimiter(delimiters, row.text[point.col])) return null;
+
+    // Walk back to the row where the run begins.
+    var start = point.col;
+    while (true) {
+        while (start > 0 and !isDelimiter(delimiters, row.text[start - 1])) start -= 1;
+        if (start > 0 or !row.continuation) break;
+        // The run begins above the viewport and can't be reconstructed.
+        if (row_index == 0) return null;
+        row_index -= 1;
+        row = rows.get(row_index) orelse return null;
+        if (!row.wrapped) return null;
+        start = row.text.len;
     }
 
-    return null;
+    // Copy the run forward, leaving room in front to prepend the www scheme.
+    const run = out[www_scheme.len..];
+    var len: usize = 0;
+    var cursor: usize = 0; // offset of `point` within the run
+    var span_start: usize = 0; // columns the run covers on the hovered row
+    var span_end: usize = 0;
+    while (true) {
+        var end = start;
+        while (end < row.text.len and !isDelimiter(delimiters, row.text[end])) end += 1;
+        if (row_index == point.row) {
+            cursor = len + point.col - start;
+            span_start = start;
+            span_end = end;
+        }
+        const part = row.text[start..end];
+        if (part.len > run.len - len) return null;
+        @memcpy(run[len..][0..part.len], part);
+        len += part.len;
+        if (end < row.text.len or !row.wrapped) break;
+        row_index += 1;
+        row = rows.get(row_index) orelse return null;
+        if (!row.continuation) return null;
+        start = 0;
+    }
+
+    var lo: usize = 0;
+    while (lo < len and contains(cfg.trimLeadingOrDefault(), run[lo])) lo += 1;
+    var hi = len;
+    while (hi > lo and contains(cfg.trimTrailingOrDefault(), run[hi - 1])) hi -= 1;
+    if (cursor < lo or cursor >= hi) return null;
+
+    const token = run[lo..hi];
+    const www = cfg.match_www and std.mem.startsWith(u8, token, "www.");
+    if (!www and !hasLinkPrefix(cfg, token)) return null;
+    const open_text = if (www) blk: {
+        // `token` starts at out[www_scheme.len + lo], so the scheme fits just before it.
+        @memcpy(out[lo..][0..www_scheme.len], www_scheme);
+        break :blk out[lo .. www_scheme.len + hi];
+    } else token;
+
+    return .{
+        .start_col = @max(span_start, point.col -| (cursor - lo)),
+        .end_col = @min(span_end, point.col + (hi - cursor)),
+        .open_text = open_text,
+    };
 }
 
 pub fn hyperlinkUriAt(self: *App, pane: *Pane, point: CellPoint, out: []u8) ?[]const u8 {
@@ -71,124 +174,28 @@ pub fn hyperlinkUriAt(self: *App, pane: *Pane, point: CellPoint, out: []u8) ?[]c
     return out[0..uri_len];
 }
 
+// OSC 8 links carry their URI per cell; the token is the run of cells sharing it.
+fn osc8TokenAt(self: *App, pane: *Pane, point: CellPoint, out: []u8) ?HyperlinkToken {
+    const uri = hyperlinkUriAt(self, pane, point, out) orelse return null;
+    var start_col = point.col;
+    while (start_col > 0 and sameUriAt(self, pane, .{ .row = point.row, .col = start_col - 1 }, uri)) start_col -= 1;
+    var end_col = point.col + 1;
+    while (end_col < pane.cols and sameUriAt(self, pane, .{ .row = point.row, .col = end_col }, uri)) end_col += 1;
+    return .{ .start_col = start_col, .end_col = end_col, .open_text = uri };
+}
+
+fn sameUriAt(self: *App, pane: *Pane, point: CellPoint, uri: []const u8) bool {
+    var buf: [8192]u8 = undefined;
+    const other = hyperlinkUriAt(self, pane, point, &buf) orelse return false;
+    return std.mem.eql(u8, other, uri);
+}
+
 fn hyperlinkTokenAt(self: *App, pane: *Pane, point: CellPoint, out: []u8) ?HyperlinkToken {
     const runtime = if (self.ghostty) |*rt| rt else return null;
     if (!App.paneRenderHelpersReady(pane)) return null;
-    if (!runtime.populateRowIterator(pane.render_state, &pane.row_iterator)) return null;
-    var row_index: usize = 0;
-    while (runtime.nextRow(pane.row_iterator)) : (row_index += 1) {
-        if (row_index != point.row) continue;
-        if (!runtime.populateRowCells(pane.row_iterator, &pane.row_cells)) return null;
-
-        // OSC 8 hyperlinks are tracked by URI in the terminal grid.
-        if (hyperlinkUriAt(self, pane, point, out)) |url| {
-            var compare_buf: [8192]u8 = undefined;
-            var start_col = point.col;
-            while (start_col > 0) {
-                const prev_url = hyperlinkUriAt(self, pane, .{ .row = point.row, .col = start_col - 1 }, &compare_buf) orelse break;
-                if (!std.mem.eql(u8, prev_url, url)) break;
-                start_col -= 1;
-            }
-
-            var end_col = point.col + 1;
-            const cols = @as(usize, pane.cols);
-            while (end_col < cols) {
-                const next_url = hyperlinkUriAt(self, pane, .{ .row = point.row, .col = end_col }, &compare_buf) orelse break;
-                if (!std.mem.eql(u8, next_url, url)) break;
-                end_col += 1;
-            }
-
-            return .{
-                .text = "",
-                .start_col = start_col,
-                .end_col = end_col,
-                .open_text = url,
-            };
-        }
-
-        // Fallback: manual pattern matching
-        if (!runtime.populateRowCells(pane.row_iterator, &pane.row_cells)) return null;
-        var ascii_cols: [4096]u8 = [_]u8{0} ** 4096;
-        var col_count: usize = 0;
-        while (runtime.nextCell(pane.row_cells) and col_count < ascii_cols.len) : (col_count += 1) {
-            var cell_buf: [16]u8 = [_]u8{0} ** 16;
-            var cell_len: usize = 0;
-            text_helpers.appendCellText(runtime, pane.row_cells, &cell_buf, &cell_len);
-            ascii_cols[col_count] = if (cell_len == 1 and cell_buf[0] < 128) cell_buf[0] else 0;
-        }
-
-        if (point.col >= col_count) return null;
-        const cfg = self.config.hyperlinks;
-        const delimiters = cfg.delimitersOrDefault();
-        const isDelimiter = struct {
-            fn call(delims: []const u8, ch: u8) bool {
-                return ch == 0 or std.mem.indexOfScalar(u8, delims, ch) != null;
-            }
-        }.call;
-
-        if (isDelimiter(delimiters, ascii_cols[point.col])) return null;
-
-        var start = point.col;
-        while (start > 0 and !isDelimiter(delimiters, ascii_cols[start - 1])) : (start -= 1) {}
-
-        var end = point.col;
-        while (end < col_count and !isDelimiter(delimiters, ascii_cols[end])) : (end += 1) {}
-        if (end <= start) return null;
-
-        if (!runtime.populateRowCells(pane.row_iterator, &pane.row_cells)) return null;
-        var len: usize = 0;
-        var col: usize = 0;
-        while (runtime.nextCell(pane.row_cells)) : (col += 1) {
-            if (col < start) continue;
-            if (col >= end) break;
-            text_helpers.appendCellText(runtime, pane.row_cells, out, &len);
-        }
-        if (len == 0) return null;
-
-        var token = out[0..len];
-        var token_start = start;
-        const trim_leading_chars = cfg.trimLeadingOrDefault();
-        while (token.len > 0 and std.mem.indexOfScalar(u8, trim_leading_chars, token[0]) != null) {
-            token = token[1..];
-            token_start += 1;
-        }
-        var trimmed_end = end;
-        const trim_chars = cfg.trimTrailingOrDefault();
-        while (token.len > 0 and std.mem.indexOfScalar(u8, trim_chars, token[token.len - 1]) != null) {
-            token = token[0 .. token.len - 1];
-            trimmed_end -= 1;
-        }
-        if (token.len == 0 or trimmed_end <= token_start) return null;
-
-        const open_text = if (cfg.match_www and std.mem.startsWith(u8, token, "www.")) blk: {
-            if (out.len < token.len + "https://".len) return null;
-            @memcpy(out[0..8], "https://");
-            @memcpy(out[8 .. 8 + token.len], token);
-            break :blk out[0 .. 8 + token.len];
-        } else token;
-
-        var prefixes = std.mem.tokenizeScalar(u8, cfg.prefixesOrDefault(), ' ');
-        while (prefixes.next()) |prefix| {
-            if (prefix.len == 0) continue;
-            if (std.mem.startsWith(u8, token, prefix)) return .{
-                .text = token,
-                .start_col = token_start,
-                .end_col = trimmed_end,
-                .open_text = open_text,
-            };
-        }
-
-        if (cfg.match_www and std.mem.startsWith(u8, token, "www.")) return .{
-            .text = token,
-            .start_col = token_start,
-            .end_col = trimmed_end,
-            .open_text = open_text,
-        };
-
-        return null;
-    }
-
-    return null;
+    if (osc8TokenAt(self, pane, point, out)) |token| return token;
+    var rows = LinkRows{ .runtime = runtime, .pane = pane };
+    return wrappedTokenAt(&rows, point, self.config.hyperlinks, out);
 }
 
 pub fn openHyperlinkAt(self: *App, pane: *Pane, point: CellPoint) void {
@@ -234,4 +241,76 @@ pub fn updateHoveredHyperlink(self: *App) void {
             .end_col = token.end_col,
         };
     }
+}
+
+const TestLinkRows = struct {
+    rows: []const LinkRow,
+
+    fn get(self: *TestLinkRows, row: usize) ?LinkRow {
+        return if (row < self.rows.len) self.rows[row] else null;
+    }
+};
+
+test "hyperlinks reconstruct soft wraps from every segment" {
+    var rows = TestLinkRows{ .rows = &.{
+        .{ .text = "see https://exa", .wrapped = true, .continuation = false },
+        .{ .text = "mple.com/a/long", .wrapped = true, .continuation = true },
+        .{ .text = "/path. next", .wrapped = false, .continuation = true },
+    } };
+    const cfg = Hyperlinks{};
+    var buf: [128]u8 = undefined;
+    for ([_]CellPoint{ .{ .row = 0, .col = 8 }, .{ .row = 1, .col = 3 }, .{ .row = 2, .col = 2 } }) |point| {
+        const token = wrappedTokenAt(&rows, point, cfg, &buf).?;
+        try std.testing.expectEqualStrings("https://example.com/a/long/path", token.open_text);
+    }
+    const last = wrappedTokenAt(&rows, .{ .row = 2, .col = 2 }, cfg, &buf).?;
+    try std.testing.expectEqual(@as(usize, 0), last.start_col);
+    try std.testing.expectEqual(@as(usize, 5), last.end_col);
+    try std.testing.expect(wrappedTokenAt(&rows, .{ .row = 2, .col = 5 }, cfg, &buf) == null);
+}
+
+test "hyperlinks do not join hard newlines or return truncated buffers" {
+    var rows = TestLinkRows{ .rows = &.{
+        .{ .text = "https://example.com", .wrapped = false, .continuation = false },
+        .{ .text = "/not-a-continuation", .wrapped = false, .continuation = false },
+    } };
+    const cfg = Hyperlinks{};
+    var buf: [128]u8 = undefined;
+    const token = wrappedTokenAt(&rows, .{ .row = 0, .col = 2 }, cfg, &buf).?;
+    try std.testing.expectEqualStrings("https://example.com", token.open_text);
+    try std.testing.expect(wrappedTokenAt(&rows, .{ .row = 1, .col = 2 }, cfg, &buf) == null);
+    try std.testing.expect(wrappedTokenAt(&rows, .{ .row = 0, .col = 2 }, cfg, buf[0..8]) == null);
+}
+
+test "wrapped www links expand safely and respect viewport boundaries" {
+    var rows = TestLinkRows{ .rows = &.{
+        .{ .text = "www.exam", .wrapped = true, .continuation = false },
+        .{ .text = "ple.com!", .wrapped = false, .continuation = true },
+    } };
+    const cfg = Hyperlinks{};
+    var buf: [128]u8 = undefined;
+    const token = wrappedTokenAt(&rows, .{ .row = 1, .col = 2 }, cfg, &buf).?;
+    try std.testing.expectEqualStrings("https://www.example.com", token.open_text);
+    rows.rows = rows.rows[1..];
+    try std.testing.expect(wrappedTokenAt(&rows, .{ .row = 0, .col = 2 }, cfg, &buf) == null);
+    rows.rows = &.{.{ .text = "https://example", .wrapped = true, .continuation = false }};
+    try std.testing.expect(wrappedTokenAt(&rows, .{ .row = 0, .col = 2 }, cfg, &buf) == null);
+}
+
+test "trimmed wrapped links clip hover columns to the trimmed token" {
+    var rows = TestLinkRows{ .rows = &.{
+        .{ .text = "x (www.ex", .wrapped = true, .continuation = false },
+        .{ .text = "ample.com). y", .wrapped = false, .continuation = true },
+    } };
+    const cfg = Hyperlinks{};
+    var buf: [128]u8 = undefined;
+    try std.testing.expect(wrappedTokenAt(&rows, .{ .row = 0, .col = 2 }, cfg, &buf) == null);
+    const head = wrappedTokenAt(&rows, .{ .row = 0, .col = 4 }, cfg, &buf).?;
+    try std.testing.expectEqualStrings("https://www.example.com", head.open_text);
+    try std.testing.expectEqual(@as(usize, 3), head.start_col);
+    try std.testing.expectEqual(@as(usize, 9), head.end_col);
+    const tail = wrappedTokenAt(&rows, .{ .row = 1, .col = 0 }, cfg, &buf).?;
+    try std.testing.expectEqual(@as(usize, 0), tail.start_col);
+    try std.testing.expectEqual(@as(usize, 9), tail.end_col);
+    try std.testing.expect(wrappedTokenAt(&rows, .{ .row = 1, .col = 9 }, cfg, &buf) == null);
 }

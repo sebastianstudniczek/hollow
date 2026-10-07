@@ -1474,6 +1474,18 @@ pub const Runtime = struct {
         return @enumFromInt(sp);
     }
 
+    pub fn rowWrapped(self: *Runtime, row: u64) bool {
+        var wrapped = false;
+        _ = self.grid_row_get(row, 1, &wrapped);
+        return wrapped;
+    }
+
+    pub fn rowWrapContinuation(self: *Runtime, row: u64) bool {
+        var continuation = false;
+        _ = self.grid_row_get(row, 2, &continuation);
+        return continuation;
+    }
+
     pub fn terminalKittyGraphics(self: *Runtime, handle: ?*anyopaque) ?*anyopaque {
         if (handle) |terminal| {
             var graphics: ?*anyopaque = null;
@@ -1789,4 +1801,30 @@ test "terminal default colors are exposed through render state" {
     try std.testing.expectEqual(foreground, colors.foreground);
     try std.testing.expectEqual(background, colors.background);
     try std.testing.expectEqual(palette[0], colors.palette[0]);
+}
+
+test "row wrap flags distinguish soft wraps from newlines" {
+    var runtime = try Runtime.init(std.testing.allocator, null);
+    defer runtime.deinit();
+    const terminal = try runtime.createTerminal(8, 4, 0);
+    defer runtime.freeTerminal(terminal);
+    runtime.terminalWrite(terminal, "https://example\r\nnext");
+    const render_state = try runtime.createRenderState();
+    defer runtime.freeRenderState(render_state);
+    try runtime.updateRenderState(render_state, terminal);
+    var iterator = try runtime.createRowIterator();
+    defer runtime.freeRowIterator(iterator);
+    try std.testing.expect(runtime.populateRowIterator(render_state, &iterator));
+    try std.testing.expect(runtime.nextRow(iterator));
+    var row = runtime.rowRaw(iterator);
+    try std.testing.expect(runtime.rowWrapped(row));
+    try std.testing.expect(!runtime.rowWrapContinuation(row));
+    try std.testing.expect(runtime.nextRow(iterator));
+    row = runtime.rowRaw(iterator);
+    try std.testing.expect(!runtime.rowWrapped(row));
+    try std.testing.expect(runtime.rowWrapContinuation(row));
+    try std.testing.expect(runtime.nextRow(iterator));
+    row = runtime.rowRaw(iterator);
+    try std.testing.expect(!runtime.rowWrapped(row));
+    try std.testing.expect(!runtime.rowWrapContinuation(row));
 }
