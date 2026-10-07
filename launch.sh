@@ -39,6 +39,7 @@ for arg in "$@"; do
   --help | -h)
     echo "Usage: $0 [--no-build] [--build-only] [--debug] [--pdb] [--target=TARGET] [--safe-render] [--no-swapchain-glyphs] [--no-multi-pane-cache] [--list-fonts] [--match-font QUERY] [--json] [--app-arg=ARG]"
     echo "Lua dev loop: after one build, Lua files under src/lua/ are loaded from disk when present, so you can use --no-build for Lua-only changes."
+    echo "Windows targets are copied to %USERPROFILE%\\Applications\\Hollow and launched from there (also with --no-build)."
     exit 0
     ;;
   esac
@@ -104,6 +105,23 @@ copy_if_exists() {
     cp "$src" "$dst"
   fi
 }
+
+if [[ "$TARGET" == *"windows"* ]]; then
+  WINDOWS_PROFILE="$(powershell.exe -NoProfile -NonInteractive -Command '$env:USERPROFILE' | tr -d '\r')"
+  WINDOWS_APP_DIR="$(wslpath -u "$WINDOWS_PROFILE")/Applications/Hollow"
+  mkdir -p "$WINDOWS_APP_DIR"
+  echo "[launch] copying Windows artifacts to $WINDOWS_APP_DIR"
+  for name in "$LAUNCHER_NAME" "$GUI_NAME" "$GUI_LAUNCHER_NAME" \
+    "$LAUNCHER_PDB_NAME" "$GUI_PDB_NAME" "$GUI_LAUNCHER_PDB_NAME" \
+    hollow-wsl-bypass hollow-cli; do
+    copy_if_exists "$BIN_DIR/$name" "$WINDOWS_APP_DIR/$name"
+  done
+  # Keep on-disk Lua/config overrides available beside the relocated executable.
+  mkdir -p "$WINDOWS_APP_DIR/src"
+  cp -R "$SCRIPT_DIR/src/lua" "$WINDOWS_APP_DIR/src/"
+  cp -R "$SCRIPT_DIR/conf" "$WINDOWS_APP_DIR/"
+  EXE_PATH="$WINDOWS_APP_DIR/$EXE_NAME"
+fi
 
 if [[ $RUN -eq 1 ]]; then
   RUN_ARGS=()
