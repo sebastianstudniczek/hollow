@@ -141,98 +141,205 @@ local function copy_mode_search_chip(copy_mode, theme)
   })
 end
 
-local function leader_hint_style()
-  local value = hollow.config.get("leader_hint_style")
-  if value == "overlay" or value == "none" then
-    return value
-  end
-  return "bar"
+local BAR_STYLES = { bar = true, overlay = true }
+
+--- How the mode strip is presented: docked "bar" (default) or floating "overlay".
+---@return "bar"|"overlay"
+function M.style()
+  local value = hollow.config.get("bottombar_style")
+  return BAR_STYLES[value] and value or "bar"
 end
 
-local leader_overlay = { widget = nil, data = nil }
-
-local function leader_overlay_row(theme)
-  local data = leader_overlay.data
-  if data == nil then
-    return ui.row({})
+local function leader_hints(leader, theme)
+  if leader == nil or leader.next_display == nil or #leader.next_display == 0 then
+    return {}
   end
-
-  local hints = (data.next_display and #data.next_display > 0) and tbl(data.next_display)
+  return tbl(leader.next_display)
     :map(function(item)
       local key, label = item:match("^([^:]+):(.+)$")
       return special_mode_hint(key or item, label or "", theme)
     end)
-    :get() or {}
-
-  return ui.row(flatten_nodes(tbl({
-    special_mode_chip(" LEADER ", { bg = theme.leader_bg, fg = theme.fg }),
-  }):concat(hints):get()))
+    :get()
 end
 
-local function sync_leader_overlay(leader, theme)
-  if leader == nil then
-    if leader_overlay.widget ~= nil then
-      ui.overlay.remove(leader_overlay.widget)
-      leader_overlay.widget = nil
+--- Presentation-agnostic description of the active special mode, or nil when
+--- none is active. `chips` and `legend.nodes` are already-styled span nodes; the
+--- bar and overlay presenters below only decide how to lay them out.
+---@param theme table
+---@return table|nil
+function M.mode_model(theme)
+  local copy_mode = M.copy_mode_state()
+  if copy_mode ~= nil then
+    return {
+      chips = {
+        {
+          id = "mode:copy",
+          node = special_mode_chip(" COPY ", { bg = theme.copy_bg, fg = theme.accent }),
+        },
+        { id = "mode:search", node = copy_mode_search_chip(copy_mode, theme) },
+      },
+      legend = {
+        id = "mode:copy-legend",
+        nodes = flatten_nodes({
+          special_mode_hint("h/j/k/l", "move", theme),
+          special_mode_hint("gg/G", "ends", theme),
+          special_mode_hint("v", "sel", theme),
+          special_mode_hint("C-v", "blk", theme),
+          special_mode_hint("n/N", "match", theme),
+          special_mode_hint("y", "copy", theme),
+          special_mode_hint("q", "exit", theme),
+        }),
+      },
+    }
+  end
+
+  local quick_select = M.quick_select_state()
+  if quick_select ~= nil then
+    return {
+      chips = {
+        {
+          id = "mode:quick-select",
+          node = special_mode_chip(
+            " QUICK SELECT ",
+            { bg = theme.quick_select_bg, fg = theme.accent }
+          ),
+        },
+        {
+          id = "mode:quick-select-action",
+          node = special_mode_chip(
+            " " .. (quick_select.action == "copy" and "copy" or "open/copy") .. " ",
+            { bg = theme.chip_bg, fg = theme.chip_fg }
+          ),
+        },
+      },
+      legend = {
+        id = "mode:quick-select-legend",
+        nodes = flatten_nodes({
+          special_mode_hint("a-z", "choose", theme),
+          special_mode_hint("Backspace", "undo", theme),
+          special_mode_hint("Esc", "exit", theme),
+        }),
+      },
+    }
+  end
+
+  local leader = M.leader_state()
+  if leader ~= nil then
+    local remaining_ms = math.max(0, tonumber(leader.remaining_ms) or 0)
+    return {
+      remaining_ms = remaining_ms,
+      chips = {
+        {
+          id = "mode:leader",
+          node = special_mode_chip(" LEADER ", { bg = theme.leader_bg, fg = theme.fg }),
+        },
+      },
+      legend = {
+        id = "mode:leader-legend",
+        cache_ttl_ms = math.max(1, remaining_ms),
+        nodes = flatten_nodes(leader_hints(leader, theme)),
+      },
+    }
+  end
+
+  return nil
+end
+
+---@param model table
+---@return table[]
+local function bar_items(model)
+  local items = {}
+  for _, chip in ipairs(model.chips) do
+    items[#items + 1] = ui.bar.custom({
+      id = chip.id,
+      render = function()
+        return chip.node
+      end,
+    })
+  end
+  items[#items + 1] = ui.spacer()
+  items[#items + 1] = ui.bar.custom({
+    id = model.legend.id,
+    cache_ttl_ms = model.legend.cache_ttl_ms,
+    render = function()
+      return model.legend.nodes
+    end,
+  })
+  return items
+end
+
+---@param model table|nil
+local function overlay_row(model)
+  if model == nil then
+    return ui.row({})
+  end
+  local nodes = {}
+  for _, chip in ipairs(model.chips) do
+    nodes[#nodes + 1] = chip.node
+  end
+  for _, node in ipairs(model.legend.nodes) do
+    nodes[#nodes + 1] = node
+  end
+  return ui.row(flatten_nodes(nodes))
+end
+
+local function overlay_options(theme)
+  local user = hollow.config.get("bottombar_overlay")
+  user = type(user) == "table" and user or {}
+  local chrome = util.merge_tables(
+    util.clone_value({
+      bg = theme.bg,
+      border = theme.divider,
+      border_size = 1,
+      radius = 4,
+      padding = { left = 1, right = 1, top = 0, bottom = 0 },
+    }),
+    type(user.chrome) == "table" and user.chrome or {}
+  )
+  return {
+    align = user.align or "bottom_center",
+    chrome = shared.normalize_overlay_chrome(chrome),
+  }
+end
+
+-- One floating widget serves every mode that is presented as an overlay. It
+-- re-reads the mode state on each render, so only its lifetime is synced from
+-- the bottombar render below.
+local mode_overlay = { widget = nil }
+
+local function sync_mode_overlay(model, theme)
+  if model == nil then
+    if mode_overlay.widget ~= nil then
+      ui.overlay.remove(mode_overlay.widget)
+      mode_overlay.widget = nil
     end
-    leader_overlay.data = nil
     return
   end
 
-  leader_overlay.data = leader
-
-  if leader_overlay.widget == nil then
-    local widget = ui.overlay.new({
-      align = "bottom_center",
-      chrome = shared.normalize_overlay_chrome({
-        bg = theme.bg,
-        border = theme.divider,
-        border_size = 1,
-        radius = 4,
-        padding = { left = 1, right = 1, top = 0, bottom = 0 },
-      }),
+  if mode_overlay.widget == nil then
+    local opts = overlay_options(theme)
+    local widget
+    widget = ui.overlay.new({
+      align = opts.align,
+      chrome = opts.chrome,
       render = function()
-        return leader_overlay_row(special_mode_theme())
+        return overlay_row(M.mode_model(special_mode_theme()))
+      end,
+      on_unmount = function()
+        if mode_overlay.widget == widget then
+          mode_overlay.widget = nil
+        end
       end,
     })
-    leader_overlay.widget = widget
+    mode_overlay.widget = widget
     ui.overlay.push(widget)
   end
-end
 
-local function special_mode_legend(copy_mode, quick_select, leader, theme)
-  local hints = copy_mode ~= nil
-      and {
-        special_mode_hint("h/j/k/l", "move", theme),
-        special_mode_hint("gg/G", "ends", theme),
-        special_mode_hint("v", "sel", theme),
-        special_mode_hint("C-v", "blk", theme),
-        special_mode_hint("n/N", "match", theme),
-        special_mode_hint("y", "copy", theme),
-        special_mode_hint("q", "exit", theme),
-      }
-    or quick_select ~= nil and {
-      special_mode_hint("a-z", "choose", theme),
-      special_mode_hint("Backspace", "undo", theme),
-      special_mode_hint("Esc", "exit", theme),
-    }
-    or (leader ~= nil and leader.next_display and #leader.next_display > 0) and tbl(leader.next_display)
-      :map(function(item)
-        local key, label = item:match("^([^:]+):(.+)$")
-        return special_mode_hint(key or item, label or "", theme)
-      end)
-      :get()
-    or {}
-
-  return ui.bar.custom({
-    id = copy_mode ~= nil and "mode:copy-legend"
-      or quick_select ~= nil and "mode:quick-select-legend"
-      or "mode:leader-legend",
-    cache_ttl_ms = leader ~= nil and math.max(1, tonumber(leader.remaining_ms) or 0) or nil,
-    render = function()
-      return flatten_nodes(hints)
-    end,
-  })
+  -- Leader timeout is detected lazily by the keymap, so let the overlay expire
+  -- on its own; every leader step re-syncs and pushes the deadline forward.
+  mode_overlay.widget._expires_at = model.remaining_ms ~= nil
+      and util.host_now_ms(state.host_api) + model.remaining_ms
+    or nil
 end
 
 function M.widget()
@@ -244,77 +351,44 @@ function M.widget()
       padding = { left = 1, right = 1, top = 0, bottom = 0 },
     },
     render = function()
-      local copy_mode = M.copy_mode_state()
-      local quick_select = copy_mode == nil and M.quick_select_state() or nil
-      local raw_leader = copy_mode == nil and quick_select == nil and M.leader_state() or nil
+      local model = M.mode_model(theme)
+      local overlay = M.style() == "overlay"
 
-      local style = leader_hint_style()
-      sync_leader_overlay(style == "overlay" and raw_leader or nil, theme)
-      local leader = style == "bar" and raw_leader or nil
-
-      if copy_mode == nil and quick_select == nil and leader == nil then
+      sync_mode_overlay(overlay and model or nil, theme)
+      if model == nil or overlay then
         return {}
       end
-
-      local mode_items
-      if copy_mode ~= nil then
-        mode_items = {
-          ui.bar.custom({
-            id = "mode:copy",
-            render = function()
-              return special_mode_chip(" COPY ", {
-                bg = theme.copy_bg,
-                fg = theme.accent,
-              })
-            end,
-          }),
-          ui.bar.custom({
-            id = "mode:search",
-            render = function()
-              return copy_mode_search_chip(copy_mode, theme)
-            end,
-          }),
-        }
-      elseif quick_select ~= nil then
-        mode_items = {
-          ui.bar.custom({
-            id = "mode:quick-select",
-            render = function()
-              return special_mode_chip(" QUICK SELECT ", {
-                bg = theme.quick_select_bg,
-                fg = theme.accent,
-              })
-            end,
-          }),
-          ui.bar.custom({
-            id = "mode:quick-select-action",
-            render = function()
-              return special_mode_chip(
-                " " .. (quick_select.action == "copy" and "copy" or "open/copy") .. " ",
-                { bg = theme.chip_bg, fg = theme.chip_fg }
-              )
-            end,
-          }),
-        }
-      elseif leader ~= nil then
-        mode_items = {
-          ui.bar.custom({
-            id = "mode:leader",
-            render = function()
-              return special_mode_chip(" LEADER ", {
-                bg = theme.leader_bg,
-                fg = theme.fg,
-              })
-            end,
-          }),
-        }
-      end
-
-      return tbl(mode_items)
-        :concat({ ui.spacer(), special_mode_legend(copy_mode, quick_select, leader, theme) })
-        :get()
+      return bar_items(model)
     end,
   })
+end
+
+--- Partial configuration of the built-in bottombar (the counterpart of
+--- `hollow.ui.topbar.configure`). Values are stored as ordinary config keys.
+---@param opts { style?: "bar"|"overlay", overlay?: { align?: string, chrome?: table } }|nil
+function M.configure(opts)
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    error("hollow.ui.bottombar.configure(opts) expects a table")
+  end
+
+  local values = {}
+  if opts.style ~= nil then
+    if not BAR_STYLES[opts.style] then
+      error('hollow.ui.bottombar.configure: style must be "bar" or "overlay"')
+    end
+    values.bottombar_style = opts.style
+  end
+  if opts.overlay ~= nil then
+    if type(opts.overlay) ~= "table" then
+      error("hollow.ui.bottombar.configure: overlay must be a table")
+    end
+    values.bottombar_overlay = opts.overlay
+  end
+
+  if next(values) ~= nil then
+    hollow.config.set(values)
+  end
 end
 
 function M.visible_item_count(items)

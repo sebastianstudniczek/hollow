@@ -332,50 +332,116 @@ describe("UI bars test suite", function()
     end)
   end)
 
-  describe("leader hint style config", function()
-    it("hides the bottombar and shows no overlay when style is none", function()
-      hollow.config.set({ leader_hint_style = "none" })
-      local leader_key, leader_mods = hollow.keymap.parse_chord("<C-Space>")
-      harness.assert_true(on_key(leader_key, leader_mods), "leader key should activate leader mode")
-      harness.assert_true(
-        hollow.ui._bottombar_state() == nil,
-        "bottombar should stay hidden when leader_hint_style is none"
-      )
-      harness.assert_true(
-        hollow.ui._overlay_state() == nil,
-        "no overlay should appear when leader_hint_style is none"
-      )
-      harness.assert_true(on_key("z", 0), "unmatched leader continuation should clear leader mode")
+  describe("bottombar style config", function()
+    local function overlay_text(overlay)
+      local parts = {}
+      for _, row in ipairs(overlay.rows) do
+        for _, segment in ipairs(row.segments) do
+          parts[#parts + 1] = segment.text or ""
+        end
+      end
+      return table.concat(parts)
+    end
+
+    after_each(function()
+      hollow.config.set({ bottombar_style = "bar", bottombar_overlay = { align = "bottom_center" } })
+      hollow.action.copy_mode_exit()
+      hollow._emit_builtin_event("quick_select:changed", { active = false, action = "open" })
+      on_key("z", 0)
     end)
 
-    it("renders a floating overlay instead of the bottombar when style is overlay", function()
-      hollow.config.set({ leader_hint_style = "overlay" })
+    it("keeps the docked bar by default", function()
+      hollow.action.copy_mode()
+      harness.assert_true(hollow.ui._bottombar_state() ~= nil, "copy mode should use the bar")
+      harness.assert_true(hollow.ui._overlay_state() == nil, "copy mode should not open an overlay")
+    end)
+
+    it("floats copy mode as an overlay and closes it on exit", function()
+      hollow.config.set({ bottombar_style = "overlay" })
+      hollow.action.copy_mode()
+      harness.assert_true(
+        hollow.ui._bottombar_state() == nil,
+        "bottombar should stay hidden when bottombar_style is overlay"
+      )
+      local overlays = hollow.ui._overlay_state()
+      harness.assert_true(overlays ~= nil, "copy mode should open an overlay")
+      local text = overlay_text(overlays[#overlays])
+      harness.assert_true(text:find("COPY", 1, true) ~= nil, "overlay should identify copy mode")
+      harness.assert_true(text:find("/search", 1, true) ~= nil, "overlay should show search status")
+      harness.assert_true(text:find("move", 1, true) ~= nil, "overlay should show key hints")
+
+      hollow.action.copy_mode_exit()
+      hollow.ui._bottombar_state()
+      harness.assert_true(hollow.ui._overlay_state() == nil, "overlay should close with copy mode")
+    end)
+
+    it("floats quick select as an overlay", function()
+      hollow.config.set({ bottombar_style = "overlay" })
+      hollow._emit_builtin_event("quick_select:changed", { active = true, action = "open" })
+      harness.assert_true(hollow.ui._bottombar_state() == nil, "bottombar should stay hidden")
+      local overlays = hollow.ui._overlay_state()
+      harness.assert_true(overlays ~= nil, "quick select should open an overlay")
+      local text = overlay_text(overlays[#overlays])
+      harness.assert_true(text:find("QUICK SELECT", 1, true) ~= nil, "overlay should name the mode")
+      harness.assert_true(text:find("choose", 1, true) ~= nil, "overlay should show key hints")
+    end)
+
+    it("floats the leader hints as an overlay", function()
+      hollow.config.set({ bottombar_style = "overlay" })
       local leader_key, leader_mods = hollow.keymap.parse_chord("<C-Space>")
       harness.assert_true(on_key(leader_key, leader_mods), "leader key should activate leader mode")
+      harness.assert_true(hollow.ui._bottombar_state() == nil, "bottombar should stay hidden")
+      local overlays = hollow.ui._overlay_state()
+      harness.assert_true(overlays ~= nil, "leader should open an overlay")
       harness.assert_true(
-        hollow.ui._bottombar_state() == nil,
-        "bottombar should stay hidden when leader_hint_style is overlay"
+        overlay_text(overlays[#overlays]):find("LEADER", 1, true) ~= nil,
+        "overlay should identify leader mode"
       )
-      local overlay_state = hollow.ui._overlay_state()
+      local stack = require("hollow.state").get().ui.overlay_stack
       harness.assert_true(
-        overlay_state ~= nil,
-        "an overlay should appear when leader_hint_style is overlay"
+        type(stack[#stack]._expires_at) == "number",
+        "leader overlay should expire with the leader timeout"
       )
-      local leader_overlay = overlay_state[#overlay_state]
+      harness.assert_true(on_key("z", 0), "unmatched continuation should clear leader mode")
+      harness.assert_true(hollow.ui._bottombar_state() == nil, "bottombar should stay hidden")
+      harness.assert_true(hollow.ui._overlay_state() == nil, "overlay should close with leader mode")
+    end)
+
+    it("switches presentation live when style changes mid-mode", function()
+      hollow.action.copy_mode()
+      harness.assert_true(hollow.ui._bottombar_state() ~= nil, "copy mode should start in the bar")
+      hollow.ui.bottombar.configure({ style = "overlay" })
+      harness.assert_true(hollow.ui._bottombar_state() == nil, "bar should hide after switching")
+      harness.assert_true(hollow.ui._overlay_state() ~= nil, "overlay should appear after switching")
+      hollow.ui.bottombar.configure({ style = "bar" })
+      harness.assert_true(hollow.ui._bottombar_state() ~= nil, "bar should return after switching")
+      harness.assert_true(hollow.ui._overlay_state() == nil, "overlay should close after switching")
+    end)
+
+    it("applies overlay align and chrome from configure()", function()
+      hollow.ui.bottombar.configure({
+        style = "overlay",
+        overlay = { align = "top_right", chrome = { radius = 9 } },
+      })
+      hollow.action.copy_mode()
+      hollow.ui._bottombar_state()
+      local overlays = hollow.ui._overlay_state()
+      harness.assert_true(overlays ~= nil, "overlay should open")
+      local overlay = overlays[#overlays]
+      harness.assert_equal(overlay.align, "top_right", "overlay should use the configured align")
+      harness.assert_equal(overlay.chrome.radius, 9, "configured chrome should override the default")
+      harness.assert_true(overlay.chrome.border ~= nil, "themed chrome defaults should be kept")
+    end)
+
+    it("rejects invalid configure() values", function()
       harness.assert_true(
-        leader_overlay.rows[1].segments[1].text:find("LEADER", 1, true) ~= nil,
-        "leader overlay should identify leader mode"
-      )
-      harness.assert_true(on_key("z", 0), "unmatched leader continuation should clear leader mode")
-      harness.assert_true(
-        hollow.ui._bottombar_state() == nil,
-        "bottombar should stay hidden after leader mode resets"
+        not pcall(hollow.ui.bottombar.configure, { style = "floating" }),
+        "unknown style should error"
       )
       harness.assert_true(
-        hollow.ui._overlay_state() == nil,
-        "leader overlay should close after leader mode resets"
+        not pcall(hollow.ui.bottombar.configure, { overlay = "bottom" }),
+        "non-table overlay should error"
       )
-      hollow.config.set({ leader_hint_style = "bar" })
     end)
   end)
 

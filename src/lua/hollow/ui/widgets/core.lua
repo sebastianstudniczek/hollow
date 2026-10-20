@@ -55,6 +55,25 @@ local function mounted_widgets()
   return widgets
 end
 
+local UTF8_CHAR_PATTERN = "[%z\1-\127\194-\244][\128-\191]*"
+
+--- Truncate `text` to at most `max_cells` code points (the renderer advances
+--- one cell per code point). Returns the truncated text and its cell count.
+---@param text string
+---@param max_cells integer
+---@return string, integer
+local function take_cells(text, max_cells)
+  local count, stop = 0, 0
+  for start, char in text:gmatch("()(" .. UTF8_CHAR_PATTERN .. ")") do
+    if count >= max_cells then
+      return text:sub(1, stop), count
+    end
+    count = count + 1
+    stop = start + #char - 1
+  end
+  return text, count
+end
+
 ---@param row HollowUiRow
 ---@param max_chars number|nil
 ---@return HollowUiSegment[]
@@ -68,14 +87,14 @@ local function trim_row_for_width(row, max_chars)
       break
     end
 
-    if not node.spacer then
-      local text = node.text or ""
-      if #text > remaining then
-        text = text:sub(1, remaining)
-      end
-      if #text > 0 then
+    if node.spacer then
+      -- keep spacers so the renderer can right-align what follows
+      segments[#segments + 1] = { text = "", spacer = true }
+    else
+      local text, cells = take_cells(node.text or "", remaining)
+      if cells > 0 then
         segments[#segments + 1] = shared.style_to_segment(text, node.style)
-        remaining = remaining - #text
+        remaining = remaining - cells
       end
     end
   end

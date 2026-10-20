@@ -8,7 +8,7 @@
 ---@alias HollowFontStyle "normal"|"italic"|"oblique"
 ---@alias HollowCursorStyle "block"|"bar"|"underline"|"block_hollow"
 ---@alias HollowTopBarMode "always"|"tabs"
----@alias HollowLeaderHintStyle "bar"|"overlay"|"none"
+---@alias HollowBottomBarStyle "bar"|"overlay"
 ---@alias HollowSidebarSide "left"|"right"
 ---@alias HollowOverlayAlign "center"|"top_left"|"top_center"|"top_right"|"left_center"|"right_center"|"bottom_left"|"bottom_center"|"bottom_right"|"left"|"right"|"top"|"bottom"
 ---@class HollowUiThemeBackdrop
@@ -415,7 +415,8 @@
 ---@field bottom_bar_height? integer
 ---@field bottom_bar_bg? HollowColor
 ---@field bottom_bar_draw_status? boolean
----@field leader_hint_style? HollowLeaderHintStyle
+---@field bottombar_style? HollowBottomBarStyle Present the bottom bar (copy mode, quick select and leader hints) docked ("bar", default) or floating ("overlay")
+---@field bottombar_overlay? HollowBottomBarOverlayConfig
 ---@field scrollbar? HollowScrollbarConfig
 ---@field hyperlinks? HollowHyperlinksConfig
 ---@field quick_select? HollowQuickSelectConfig
@@ -868,6 +869,14 @@
 ---@class HollowUiTopbarTimeOptions
 ---@field format? string
 ---@field style? HollowUiNodeStyle|HollowHexColor
+
+---@class HollowBottomBarOverlayConfig
+---@field align? HollowOverlayAlign Default "bottom_center"
+---@field chrome? HollowUiChrome Merged over the themed default border/background
+
+---@class HollowUiBottombarConfigureOptions
+---@field style? HollowBottomBarStyle
+---@field overlay? HollowBottomBarOverlayConfig
 
 ---@class HollowUiTopbarConfigureOptions
 ---@field height? integer
@@ -1670,6 +1679,9 @@ function bottombar.unmount() end
 
 ---@return boolean
 function bottombar.invalidate() end
+
+---@param opts? HollowUiBottombarConfigureOptions
+function bottombar.configure(opts) end
 
 ---@class HollowUiSidebarNamespace
 local sidebar = {}

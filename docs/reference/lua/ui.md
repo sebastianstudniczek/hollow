@@ -90,6 +90,17 @@ hollow.ui.bottombar.new(opts)
 hollow.ui.bottombar.mount(widget)
 hollow.ui.bottombar.unmount()
 hollow.ui.bottombar.invalidate()
+hollow.ui.bottombar.configure(opts)
+```
+
+`configure` is for partial tweaks of the built-in mode bar; `mount` replaces
+it entirely.
+
+```lua
+hollow.ui.bottombar.configure({
+  style   = "overlay",                          -- "bar" (default) | "overlay"
+  overlay = { align = "bottom_right", chrome = { radius = 8 } },
+})
 ```
 
 ## Sidebar

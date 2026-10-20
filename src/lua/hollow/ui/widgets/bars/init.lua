@@ -70,6 +70,11 @@ function ui.topbar.configure(opts)
   cache.invalidate("topbar")
 end
 
+function ui.bottombar.configure(opts)
+  bottombar.configure(opts)
+  cache.invalidate("bottombar")
+end
+
 function ui._register_bar_invalidation_hooks()
   if state.ui._bar_invalidation_hooks_registered then
     return

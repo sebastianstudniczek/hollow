@@ -109,7 +109,14 @@ hollow.ui.bar.custom({ id = "weather", render = function(ctx) ... end })
 ### Bottom bar
 
 A second status strip at the bottom of the window. Same widget model as
-the top bar.
+the top bar. The built-in one shows the copy-mode, quick-select and leader
+hints; to keep it but float it over the terminal instead of docking it:
+
+```lua
+hollow.ui.bottombar.configure({ style = "overlay" })
+```
+
+To replace it entirely:
 
 ```lua
 hollow.ui.bottombar.mount(hollow.ui.bottombar.new({

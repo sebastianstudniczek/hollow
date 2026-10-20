@@ -1,6 +1,7 @@
 local M = {}
 
 local THEME_KEYS = { "theme" }
+local BOTTOMBAR_KEYS = { "bottombar_style", "bottombar_overlay" }
 
 local function invalidate_bars()
   if type(_G.hollow) == "table" and type(_G.hollow.ui) == "table" then
@@ -131,7 +132,7 @@ function M.setup(hollow, host_api, state)
       end
     end
 
-    if hollow.util.has_any_key(opts, THEME_KEYS) then
+    if hollow.util.has_any_key(opts, THEME_KEYS) or hollow.util.has_any_key(opts, BOTTOMBAR_KEYS) then
       invalidate_bars()
     end
 

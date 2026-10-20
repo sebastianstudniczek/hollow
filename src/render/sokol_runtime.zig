@@ -1941,8 +1941,29 @@ fn renderLuaWidgets(runtime: *lua_mod.Runtime) void {
                     break;
                 }
                 if (@as(LuaType, @enumFromInt(api.value_type(state, -1))) == .table) {
-                    const row_segments = lua_mod.parseSegmentArray(api, state, scratch.seg_buf_32[0..], scratch.text_buf[0..], absoluteIndex(api, state, -1));
+                    const row_idx = absoluteIndex(api, state, -1);
+                    const row_segments = lua_mod.parseSegmentArray(api, state, scratch.seg_buf_32[0..], scratch.text_buf[0..], row_idx);
                     const text_y = panel_y + ctx.renderer.cell_h * @as(f32, @floatFromInt(row_i));
+                    // Row-level background, painted before the segments.
+                    //
+                    // `ui.row(children, { fill_bg = … })` already serializes fill_bg onto
+                    // the row node (ui/primitives.lua), but until now only the overlay
+                    // renderer read it back, so sidebar widgets had no way to set one.
+                    // Their only option was a bg on each span, and drawRowSegments insets
+                    // every span background by 1px top and bottom (y + 1.0, cell_h - 2.0)
+                    // and draws it at alpha 220. Since rows are laid out at exactly
+                    // cell_h, that leaves a 2px seam of panel background between adjacent
+                    // rows: a selection spanning several rows renders as separate
+                    // translucent bars rather than one block.
+                    //
+                    // Painting fill_bg here at the full cell height with no inset lets
+                    // consecutive highlighted rows tile seamlessly, which is what a
+                    // multi-line selected item (e.g. the workmux agent tiles) needs.
+                    // Spans keep their own bg for per-segment accents; drawing this first
+                    // means those still compose on top.
+                    if (overlayRowColorField(api, state, row_idx, "fill_bg")) |bg| {
+                        drawBorderRect(panel_x, text_y, sidebar_width, ctx.renderer.cell_h, bg.r, bg.g, bg.b, 255);
+                    }
                     drawRowSegments(ctx.renderer, panel_x + ctx.renderer.cell_w * 0.5, text_y, sidebar_width - ctx.renderer.cell_w, row_segments);
                 }
                 pop(api, state, 1);

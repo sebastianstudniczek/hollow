@@ -117,17 +117,28 @@ hollow.config.set({
 })
 ```
 
-### Leader-key hint
+### Bottom bar style
 
-The `LEADER` chip and the hint legend shown while a leader sequence is
-pending can be drawn in the bottom bar (default), as a floating overlay
-over the terminal content, or hidden entirely:
+The built-in bottom bar shows the `COPY`, `QUICK SELECT` and `LEADER` chips
+with their key hints. By default it is docked below the panes; set
+`bottombar_style = "overlay"` to float it over the terminal content instead
+(the terminal grid then never shrinks when a mode starts or ends):
 
 ```lua
 hollow.config.set({
-  leader_hint_style = "overlay", -- "bar" (default) | "overlay" | "none"
+  bottombar_style = "overlay",            -- "bar" (default) | "overlay"
+  bottombar_overlay = {                   -- optional, overlay style only
+    align = "bottom_right",               -- default "bottom_center"
+    chrome = { radius = 8, border = "#7e9cd8" },
+  },
 })
+
+-- or, equivalently, through the widget API:
+hollow.ui.bottombar.configure({ style = "overlay" })
 ```
+
+These options only affect the built-in bottom bar; a widget installed with
+`hollow.ui.bottombar.mount()` replaces it entirely.
 
 ### Performance and debugging
 

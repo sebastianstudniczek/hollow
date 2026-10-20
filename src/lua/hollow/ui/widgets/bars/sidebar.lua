@@ -52,7 +52,15 @@ function M.install()
     local width = math.max(1, math.floor(tonumber(widget.width) or 24))
     local rows = {}
     for index, row in ipairs(shared.render_widget_rows(widget)) do
-      rows[index] = ui.trim_row_for_width(row, width)
+      -- trim_row_for_width returns only the row's segments, so anything else
+      -- on the row node is lost here. The renderer paints `fill_bg` behind the
+      -- whole row at full cell height (render/sokol_runtime.zig, sidebar row
+      -- loop), which is what lets consecutive rows read as one block instead
+      -- of rows separated by the 1px seam that per-span backgrounds leave.
+      -- Without carrying it across, that code never saw the field.
+      local segments = ui.trim_row_for_width(row, width)
+      segments.fill_bg = row.fill_bg
+      rows[index] = segments
     end
 
     return {
